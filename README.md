@@ -57,6 +57,7 @@ the files in public/assets with your own assets.
 * `?start [hh:mm:ss]` (when not started) Start the timer with the given timer value and set the uptime to 0
 * `?forcetimer [hh:mm:ss]` (when running) Update the timers value
 * `?setbasetime [seconds]` Update the base time
+* `?maxtime [hh:mm:ss]` (when running) Set a max time
 
 # License
 This project is licensed under the GNU General Public License v3.0 License - see the LICENSE file for details
