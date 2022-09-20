@@ -442,6 +442,7 @@ class AppState {
   async start(seconds: number) {
     this.isStarted = true;
     this.startedAt = Date.now();
+	this.maxTime = 0;
     this.forceTime(seconds);
     this.io.emit('update_uptime', {'started_at': this.startedAt});
     await this.db.run('INSERT OR REPLACE INTO settings VALUES (?, ?);', ['started_at', this.startedAt]);
