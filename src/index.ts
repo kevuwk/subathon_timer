@@ -212,8 +212,73 @@ function registerTwitchEvents(state: AppState) {
         }
 
       }
+	  
+	  {
+
+        // ?addtime
+        const match = message.match(/^\?addtime ((\d+:)?\d{2}:\d{2})/);
+        if(match) {
+          if(state.isStarted) {
+            const timeStr = match[1].split(":");
+            let addSeconds;
+            if(timeStr.length === 3) {
+              const hours = parseInt(timeStr[0], 10);
+              const minutes = parseInt(timeStr[1], 10);
+              const seconds = parseInt(timeStr[2], 10);
+              addSeconds = (((hours*60) + minutes) * 60) + seconds
+            } else {
+              const minutes = parseInt(timeStr[0], 10);
+              const seconds = parseInt(timeStr[1], 10);
+              addSeconds = (minutes * 60) + seconds
+            }
+			await state.addTime(addSeconds * 1000)
+          }
+        }
+
+      }
 
     }
+	
+	if(userstate.username == "soundalerts") {
+	
+		const aMessage = message.split(" ");
+		
+		//<user> played <sound> for <amount> Bits!
+		//0 = <user>
+		//played <sound> for 
+		// length - 2 = <amount>
+		// length - 1 = Bits!
+		if (aMessage[aMessage.length - 1] === "Bits!")
+		{
+			const sbits = aMessage[aMessage.length - 2];
+			const bits = parseInt(sbits);
+			if(state.endingAt < Date.now()) return;
+			const multiplier = cfg.time.multipliers.bits;
+			const secondsToAdd = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
+			state.addTime(secondsToAdd);
+			state.displayAddTimeUpdate(secondsToAdd, `${aMessage[0]} (bits)`);
+			await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, aMessage[0]]);
+		}
+		
+		//<user> used <amount> Bits to play <sound>
+		// 0 = <user>
+		// 1 = used
+		// 3 = <amount>
+		// 4 = Bits
+		//to play <sound>
+		if (aMessage[4] === "Bits")
+		{
+			const sbits = aMessage[3];
+			const bits = parseInt(sbits);
+			if(state.endingAt < Date.now()) return;
+			const multiplier = cfg.time.multipliers.bits;
+			const secondsToAdd = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
+			state.addTime(secondsToAdd);
+			state.displayAddTimeUpdate(secondsToAdd, `${aMessage[0]} (bits)`);
+			await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, aMessage[0]]);
+		}
+	}
+	
   });
 
   state.twitch.on('subgift', async (channel: string, username: string, streakMonths: number, recipient: string,
