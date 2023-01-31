@@ -408,6 +408,9 @@ function registerStreamlabsEvents(state: AppState) {
   slabs.on("connect_error", (err: any) => {
     console.log(`streamlabs connection error: ${err}`);
   });
+  slabs.on("connect", () => {
+    console.log(`successfully connected to streamlabs socket`);
+  });
   slabs.on("reconnecting", (attempt: any) => {
     console.log(`streamlabs reconnecting (attempt ${attempt})`);
   });
