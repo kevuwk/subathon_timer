@@ -1,176 +1,189 @@
 @font-face {
-    font-family: 'Lexend';
-    src: url('fonts/Lexend-Regular.ttf') format('truetype');
-    font-weight: normal;
-    font-style: normal;
+  font-family: 'BR Cobane';
+  src: url('fonts/BR-Cobane-SemiBold.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
 }
 
 @font-face {
-    font-family: 'Lexend';
-    src: url('fonts/Lexend-Bold.ttf') format('truetype');
-    font-weight: bold;
-    font-style: normal;
+  font-family: 'BR Cobane Black';
+  src: url('fonts/BR-Cobane-Black.otf') format('opentype');
+  font-weight: black;
+  font-style: normal;
 }
 
 :root {
-    --primary-color: #FFFFFF;
-    --primary--wheel: #FFC400;
-    --secondary-color: #BEBEBE;
+  --primary-color: #000000;
+  --primary--wheel: #FFC400;
+  --secondary-color: #121212;
 }
 
 * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    font-family: Lexend, sans-serif;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: BR Cobane, sans-serif;
 }
 
 .debug {
-    border: 2px red solid;
+  border: 2px red solid;
 }
 
 body {
-    width: 100%;
-    height: 100vh;
+  width: 100%;
+  height: 100vh;
+  font-weight: normal;
 }
 
 #background {
-    position: absolute;
-    height: 100%;
-    width: 100%;
-    left: 0;
-    top: 0;
-    z-index: -1;
+  position: absolute;
+  height: 92%;
+  width: 92%;
+  left: 4%;
+  top: 4%;
+  z-index: -1;
+  border-radius: 20px;
 }
 
 #container {
-    position: fixed;
-    height: 100% !important;
-    width: 100% !important;
+  position: fixed;
+  height: 92% !important;
+  width: 92% !important;
+  left: 4%;
+  top: 4%;
+  border-radius: 20px;
+  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.3), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
 }
 
 .inner-container {
-    margin: 2% 5%;
-    position: absolute;
-    width: 90%;
-    height: 96%;
-    display: flex;
-    flex-flow: column;
-    overflow: hidden;
+  margin: 2% 5%;
+  position: absolute;
+  width: 90%;
+  height: 96%;
+  display: flex;
+  flex-flow: column;
+  overflow: hidden;
 }
 
 #uptime {
-    text-align: center;
-    font-size: 2.5em;
-    color: var(--secondary-color)
+  text-align: center;
+  font-size: 2.5em;
+  color: var(--secondary-color);
+  text-shadow: 0 0 25px rgba(255, 255, 255, 0.7);
+  overflow: visible;
+  padding-top: 10px;
 }
 
 #timer {
-    text-align: center;
-    font-weight: bold;
-    font-size: 10em;
-    color: var(--primary-color);
+  text-align: center;
+  font-weight: black;
+  font-family: "BR Cobane Black";
+  font-size: 8em;
+  margin: 10px 0;
+  color: var(--primary-color);
 }
 
 #incentives {
-    text-align: center;
-    font-size: 2.5em;
-    color: var(--primary-color);
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: space-evenly;
-    column-gap: 5%;
+  text-align: center;
+  font-size: 2.5em;
+  color: var(--primary-color);
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: 5%;
+  text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
 }
 
 .incentive {
-    flex-grow: 1;
-    flex-basis: 26%;
+  flex-grow: 1;
+  /* flex-basis: 26%; */
+  margin-bottom: 10px;
 }
 
 #graph {
-    flex-grow: 1;
-    padding: 3% 7% 10% 7%;
+  flex-grow: 1;
+  padding: 3% 7% 10% 7%;
 }
 
 
 #graph_svg > path {
-    fill: none;
-    stroke: var(--primary-color);
-    stroke-width: 0.8rem;
-    stroke-linejoin: round;
-    stroke-linecap: round;
-    vector-effect: non-scaling-stroke;
+  fill: none;
+  stroke: var(--primary-color);
+  stroke-width: 0.5rem;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
 }
 
 #graph_icon_container {
-    transform: translateX(100%) translateY(-50%);
+  transform: translateX(100%) translateY(-50%);
 }
 
 #graph_icon {
-    transform: translateX(-50%);
+  transform: translateX(-50%);
 }
 
 
 
 #timer-container {
-    transition: 0.2s filter linear;
+  transition: 0.2s filter linear;
 }
 
 .wheel-active > #timer-container {
-    filter: blur(12px);
+  filter: blur(12px);
 }
 
 #wheel-container {
-    transform: scale(0, 0);
+  transform: scale(0, 0);
 }
 
 .wheel-active > #wheel-container {
-    display: block !important;
-    transform: scale(1, 1) !important;
+  display: block !important;
+  transform: scale(1, 1) !important;
 }
 
 #wheel-text-container {
-    height: 18%;
-    width: 100%;
+  height: 18%;
+  width: 100%;
 }
 
 #wheel-text {
-    height: 100%;
-    width: 100%;
-    font-size: 6vw;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    color: var(--primary--wheel);
-    font-weight: bold;
-    text-align: center;
+  height: 100%;
+  width: 100%;
+  font-size: 6vw;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--primary--wheel);
+  font-weight: bold;
+  text-align: center;
 }
 
 #wheel {
-    height: 72%;
-    margin-top: 3%;
-    width: 100%;
-    display: flex;
-    justify-content: center;
+  height: 72%;
+  margin-top: 3%;
+  width: 100%;
+  display: flex;
+  justify-content: center;
 }
 
 #wheel-pin {
-    position: absolute;
-    border-left: 20px solid transparent;
-    border-right: 20px solid transparent;
-    border-top: 20px solid #ffffff;
-    transform: translate(0px, -12px);
-    z-index: 5;
+  position: absolute;
+  border-left: 20px solid transparent;
+  border-right: 20px solid transparent;
+  border-top: 20px solid #ffffff;
+  transform: translate(0px, -12px);
+  z-index: 5;
 }
 
 #wheel_svg {
-    transition: transform 5s cubic-bezier(.4,.14,.25,1);
-    flex-grow: 1;
+  transition: transform 5s cubic-bezier(.4,.14,.25,1);
+  flex-grow: 1;
 }
 
 .wheel-text {
-    font-weight: bold;
-    font-size: 2px;
-    fill: var(--primary-color);
+  font-weight: bold;
+  font-size: 2px;
+  fill: var(--primary-color);
 }

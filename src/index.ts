@@ -10,6 +10,8 @@ import cfg from '../config.json'
 import * as tmi from 'tmi.js';
 import crypto from "crypto";
 const USE_MOCK = !!process.env.USE_FDGT_MOCK;
+let aUserlist : string [] = [];
+let aChatlist : string [] = [];
 
 (async () => {
   // open the database
@@ -23,7 +25,6 @@ const USE_MOCK = !!process.env.USE_FDGT_MOCK;
   await db.run('CREATE TABLE IF NOT EXISTS cheers (timestamp INTEGER, ending_at INTEGER, amount_bits INTEGER, user_name TEXT);');
   await db.run('CREATE TABLE IF NOT EXISTS graph (timestamp INTEGER, ending_at INTEGER);');
   await db.run('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value INTEGER);');
-
 
   const twitch = !USE_MOCK ? tmi.Client({
     channels: [cfg.channel.toLowerCase()],
@@ -116,6 +117,9 @@ function registerTwitchEvents(state: AppState) {
         state.randomTargetIsMod = userstate.mod || false;
       }
     }
+	if(!isWheelBlacklisted(userstate.username||"")) {
+		AddChatter ( userstate.username||"" );
+	}
     if(message.startsWith('?') && isAdmin(userstate.username||"")) {
       {
         // ?start
@@ -248,37 +252,94 @@ function registerTwitchEvents(state: AppState) {
 		//played <sound> for 
 		// length - 2 = <amount>
 		// length - 1 = Bits!
-		if (aMessage[aMessage.length - 1] === "Bits!")
-		{
-			const sbits = aMessage[aMessage.length - 2];
-			const bits = parseInt(sbits);
-			if(state.endingAt < Date.now()) return;
-			const multiplier = cfg.time.multipliers.bits;
-			const secondsToAdd = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
-			state.addTime(secondsToAdd);
-			state.displayAddTimeUpdate(secondsToAdd, `${aMessage[0]} (bits)`);
-			await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, aMessage[0]]);
-		}
+		if ( aMessage.length > 5 ) {
+			if (aMessage[aMessage.length - 1] === "Bits!") {
+				const sbits = aMessage[aMessage.length - 2];
+				const bits = parseInt(sbits);
+				if(state.endingAt < Date.now()) return;
+				const multiplier = cfg.time.multipliers.bits;
+				const secondsToAdd = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
+				state.addTime(secondsToAdd);
+				state.displayAddTimeUpdate(secondsToAdd, `${aMessage[0]} (bits)`);
+				await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, aMessage[0]]);
+				
+				// quick mafs bit equivalent spin - comparison = ((( res.min_subs * tier_1 ) / bits multiplier ) * 100)
+							
+				const username = aMessage[0];
+				
+				let possibleResults = cfg.wheel.filter(res => ((( res.min_subs * cfg.time.multipliers.tier_1 ) / cfg.time.multipliers.bits ) * 100) <= bits);
+				if(isWheelBlacklisted(username)) {
+					possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"));
+				}
+				if(possibleResults.length > 0) {
+					const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
+					possibleResults.forEach(r => r.chance = r.chance / totalChances);
+					const rand = Math.random();
+					let result = possibleResults[0];
+					let resRand = 0;
+					for (const sp of possibleResults) {
+						resRand += sp.chance;
+						if(resRand >= rand) {
+							result = sp;
+							break;
+						}	
+					}
+			
+					const spinId = crypto.randomBytes(8).toString("hex");
+					const spin = {results: possibleResults, random: rand, id: spinId, res: result, sender: username||"", mod: state.twitch.isMod ( cfg.channel.toLowerCase(), username )};
+					state.spins.set(spinId, spin);
+					state.io.emit('display_spin', spin);
+				}
+				
+			}
 		
-		//<user> used <amount> Bits to play <sound>
-		// 0 = <user>
-		// 1 = used
-		// 3 = <amount>
-		// 4 = Bits
-		//to play <sound>
-		if (aMessage[4] === "Bits")
-		{
-			const sbits = aMessage[3];
-			const bits = parseInt(sbits);
-			if(state.endingAt < Date.now()) return;
-			const multiplier = cfg.time.multipliers.bits;
-			const secondsToAdd = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
-			state.addTime(secondsToAdd);
-			state.displayAddTimeUpdate(secondsToAdd, `${aMessage[0]} (bits)`);
-			await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, aMessage[0]]);
+			//<user> used <amount> Bits to play <sound>
+			// 0 = <user>
+			// 1 = used
+			// 3 = <amount>
+			// 4 = Bits
+			//to play <sound>
+			if (aMessage[4] === "Bits")
+			{
+				const sbits = aMessage[3];
+				const bits = parseInt(sbits);
+				if(state.endingAt < Date.now()) return;
+				const multiplier = cfg.time.multipliers.bits;
+				const secondsToAdd = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
+				state.addTime(secondsToAdd);
+				state.displayAddTimeUpdate(secondsToAdd, `${aMessage[0]} (bits)`);
+				await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, aMessage[0]]);
+				
+				// quick mafs bit equivalent spin - comparison = ((( res.min_subs * tier_1 ) / bits multiplier ) * 100)
+				
+				const username = aMessage[0];
+				let possibleResults = cfg.wheel.filter(res => ((( res.min_subs * cfg.time.multipliers.tier_1 ) / cfg.time.multipliers.bits ) * 100) <= bits);
+				if(isWheelBlacklisted(username)) {
+					possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
+				}
+				if(possibleResults.length > 0) {
+					const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
+					possibleResults.forEach(r => r.chance = r.chance / totalChances);
+					const rand = Math.random();
+					let result = possibleResults[0];
+					let resRand = 0;
+					for (const sp of possibleResults) {
+						resRand += sp.chance;
+						if(resRand >= rand) {
+							result = sp;
+							break;
+						}	
+					}
+			
+					const spinId = crypto.randomBytes(8).toString("hex");
+					const spin = {results: possibleResults, random: rand, id: spinId, res: result, sender: username||"", mod: state.twitch.isMod ( cfg.channel.toLowerCase(), username )};
+					state.spins.set(spinId, spin);
+					state.io.emit('display_spin', spin);
+				}
+			}
 		}
 	}
-	
+		
   });
 
   state.twitch.on('subgift', async (channel: string, username: string, streakMonths: number, recipient: string,
@@ -297,7 +358,7 @@ function registerTwitchEvents(state: AppState) {
     state.displayAddTimeUpdate(secondsAdded, `${username || "anonymous"} (subgift)`);
     let possibleResults = cfg.wheel.filter(res => res.min_subs <= numbOfSubs);
     if(isWheelBlacklisted(username)) {
-      possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "self"))
+      possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
     }
     if(possibleResults.length > 0) {
       const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
@@ -349,6 +410,48 @@ function registerTwitchEvents(state: AppState) {
     state.addTime(secondsToAdd);
     state.displayAddTimeUpdate(secondsToAdd, `${userstate.username || "anonymous"} (bits)`);
     await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, userstate.username||"ananonymouscheerer"]);
+	
+	// quick mafs bit equivalent spin - comparison = ((( res.min_subs * tier_1 ) / bits multiplier ) * 100)
+	
+	const username = (userstate.username || "anonymous");
+	let possibleResults = cfg.wheel.filter(res => ((( res.min_subs * cfg.time.multipliers.tier_1 ) / cfg.time.multipliers.bits ) * 100) <= bits);
+	if(isWheelBlacklisted(username)) {
+		possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
+	}
+	if(possibleResults.length > 0) {
+		const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
+		possibleResults.forEach(r => r.chance = r.chance / totalChances);
+		const rand = Math.random();
+		let result = possibleResults[0];
+		let resRand = 0;
+		for (const sp of possibleResults) {
+			resRand += sp.chance;
+			if(resRand >= rand) {
+				result = sp;
+				break;
+			}	
+		}
+		
+		const spinId = crypto.randomBytes(8).toString("hex");
+		const spin = {results: possibleResults, random: rand, id: spinId, res: result, sender: username||"", mod: userstate.mod};
+		state.spins.set(spinId, spin);
+		state.io.emit('display_spin', spin);
+	}
+  });
+  
+  state.twitch.on('join', async (channel: string, user: string, self: boolean) => {
+	if(!isWheelBlacklisted(user)) {
+		AddUser ( user );
+	}
+	if ( self )
+	{
+		console.log ("getting mods");
+		await state.twitch.mods(cfg.channel.toLowerCase());
+	}
+  });
+  
+  state.twitch.on('part', async (channel: string, user: string, self: boolean) => {
+    RemoveUser ( user );
   });
 }
 
@@ -419,6 +522,47 @@ function registerStreamlabsEvents(state: AppState) {
   });
 }
 
+function AddChatter ( user: string )
+  {
+    let bUserExists = false;
+    for (var i = 0; i < aChatlist.length; i++)
+    {
+      if ( user == aChatlist[i] )
+      {
+        bUserExists = true;
+        break;
+      }
+    }
+    if (!bUserExists) { /*console.log ("adding chatter: " + user );*/ aChatlist.push ( user ); }
+  }
+
+function AddUser ( user: string )
+  {
+    let bUserExists = false;
+    for (var i = 0; i < aUserlist.length; i++)
+    {
+      if ( user == aUserlist[i] )
+      {
+        bUserExists = true;
+        break;
+      }
+    }
+    if (!bUserExists) { /*console.log ("adding user: " + user );*/ aUserlist.push ( user ); }
+  }
+
+  function RemoveUser ( user: string )
+  {
+    for (var i = 0; i < aUserlist.length; i++)
+    {
+      if ( user == aUserlist[i] )
+      {
+        //console.log ( "Removing User: " + user );
+        aUserlist.splice(i, 1);
+        break;
+      }
+    }
+  }
+
 function registerStreamelementsEvents(state: AppState) {
   const seSocket = socketioclient(`https://realtime.streamelements.com`, {transports: ['websocket']});
 
@@ -433,6 +577,31 @@ function registerStreamelementsEvents(state: AppState) {
       const secondsToAdd = Math.round(state.baseTime * cfg.time.multipliers.follow * 1000) / 1000;
       state.addTime(secondsToAdd);
       state.displayAddTimeUpdate(secondsToAdd, `${event.data.displayName} (follow)`);
+	  
+		// quick mafs dono equivalent spin - comparison = (( res.min_subs * tier_1 ) * dono multiplier )
+		
+		let possibleResults = cfg.wheel.filter(res => (( res.min_subs * cfg.time.multipliers.tier_1 ) * cfg.time.multipliers.donation ) <= event.data.amount);
+		// can't relate to a twitch user
+		possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
+		if(possibleResults.length > 0) {
+			const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
+			possibleResults.forEach(r => r.chance = r.chance / totalChances);
+			const rand = Math.random();
+			let result = possibleResults[0];
+			let resRand = 0;
+			for (const sp of possibleResults) {
+				resRand += sp.chance;
+				if(resRand >= rand) {
+					result = sp;
+					break;
+				}	
+			}
+
+			const spinId = crypto.randomBytes(8).toString("hex");
+			const spin = {results: possibleResults, random: rand, id: spinId, res: result, sender: "", mod: false};
+			state.spins.set(spinId, spin);
+			state.io.emit('display_spin', spin);
+		}
     }
   });
 
@@ -468,7 +637,7 @@ class AppState {
   baseTime: number;
   
   maxTime: number;
-
+  
   randomTarget = "definitelynotyannis";
   randomTargetIsMod = false;
 
@@ -573,8 +742,22 @@ class AppState {
       this.displayAddTimeUpdate(spin.res.value, `${spin.sender} (wheel)`)
     } else if(spin.res.type === 'timeout') {
       if(spin.res.target === 'random') {
-        const target = this.randomTarget;
-        const targetIsMod = this.randomTargetIsMod;
+		let target = "";
+		while ( !target )
+		{
+			let x = Math.floor(Math.random() * (aChatlist.length - 1));
+			for (var i = 0; i < aUserlist.length; i++)
+			{
+				if ( aChatlist[x].toLowerCase() == aUserlist[i].toLowerCase() )
+				{
+					//console.log ( "user still in chat: " + aUserlist[i] );
+					target = aChatlist[x];
+					break;
+				}
+			}
+		}
+        //const target = this.randomTarget;
+        const targetIsMod = this.twitch.isMod ( cfg.channel.toLowerCase(), target );
         await this.twitch.timeout(cfg.channel, target, spin.res.value, "WHEEL SPIN").catch(err => console.log('Could not execute wheel TO!', err));
         if(targetIsMod) {
           console.log(`Remodding ${target} in ${(1000*spin.res.value) + 5000}ms`);
@@ -582,8 +765,12 @@ class AppState {
             await this.twitch.mod(cfg.channel, target).catch(err => console.log('Could not remod user after wheel TO!', err));
           }, (1000*spin.res.value) + 5000);
         }
+		
+		//console.log ( "timeout random: " + username + " - mod: " + this.twitch.isMod ( cfg.channel.toLowerCase(), username ));
+		//console.log (this.twitch.isMod ( cfg.channel.toLowerCase(), aUserlist[x] ));
       } else if(spin.res.target === 'sender') {
-        const wasMod = spin.res.mod;
+		const wasMod = this.twitch.isMod ( cfg.channel.toLowerCase(), spin.sender );
+		console.log ("timing out current user: " + spin.sender + " - mod: " + wasMod );
         await this.twitch.timeout(cfg.channel, spin.sender, spin.res.value, "WHEEL SPIN").catch(err => console.log('Could not execute wheel TO!', err));
         if(wasMod) {
           console.log(`Remodding ${spin.sender} in ${(1000*spin.res.value) + 5000}ms`);
@@ -604,8 +791,7 @@ class AppState {
     });
     this.io.emit('update_graph', {data: graphArray});
   }
-
-
+  
 }
 
 function multiplierFromPlan(plan: tmi.SubMethod|undefined) {
