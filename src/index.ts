@@ -12,6 +12,7 @@ import crypto from "crypto";
 const USE_MOCK = !!process.env.USE_FDGT_MOCK;
 let aUserlist : string [] = [];
 let aChatlist : string [] = [];
+let aTOlist : string [] = [];
 
 (async () => {
   // open the database
@@ -562,6 +563,19 @@ function AddUser ( user: string )
       }
     }
   }
+  
+  function RemoveTOUser ( user: string )
+  {
+    for (var i = 0; i < aTOlist.length; i++)
+    {
+      if ( user == aTOlist[i] )
+      {
+		//console.log ("removing timed out user: " + user );
+        aTOlist.splice(i, 1);
+        break;
+      }
+    }
+  }
 
 function registerStreamelementsEvents(state: AppState) {
   const seSocket = socketioclient(`https://realtime.streamelements.com`, {transports: ['websocket']});
@@ -742,21 +756,33 @@ class AppState {
       this.displayAddTimeUpdate(spin.res.value, `${spin.sender} (wheel)`)
     } else if(spin.res.type === 'timeout') {
       if(spin.res.target === 'random') {
+        let checks = 0;
 		let target = "";
 		while ( !target )
 		{
+			if (checks == 10 ) { break; }
 			let x = Math.floor(Math.random() * (aChatlist.length - 1));
 			for (var i = 0; i < aUserlist.length; i++)
 			{
 				if ( aChatlist[x].toLowerCase() == aUserlist[i].toLowerCase() )
 				{
-					//console.log ( "user still in chat: " + aUserlist[i] );
-					target = aChatlist[x];
-					break;
+					target = aChatlist[x].toLowerCase();
+				}
+				console.log ("checking user: " + aChatlist[x].toLowerCase() );
+				// check if timed out already
+				for (var j = 0; j < aTOlist.length; j++)
+				{
+					console.log ("TO: " + aTOlist[j] );					
+					if ( aChatlist[x].toLowerCase() == aTOlist[j] )
+					{
+						console.log ("user timed out: " + aChatlist[x].toLowerCase() );
+						target = "";
+					}
 				}
 			}
+			checks++;
 		}
-        //const target = this.randomTarget;
+		if ( !target ) { console.log ( "failed to find a user" ); return; }
         const targetIsMod = this.twitch.isMod ( cfg.channel.toLowerCase(), target );
         await this.twitch.timeout(cfg.channel, target, spin.res.value, "WHEEL SPIN").catch(err => console.log('Could not execute wheel TO!', err));
         if(targetIsMod) {
@@ -765,9 +791,8 @@ class AppState {
             await this.twitch.mod(cfg.channel, target).catch(err => console.log('Could not remod user after wheel TO!', err));
           }, (1000*spin.res.value) + 5000);
         }
-		
-		//console.log ( "timeout random: " + username + " - mod: " + this.twitch.isMod ( cfg.channel.toLowerCase(), username ));
-		//console.log (this.twitch.isMod ( cfg.channel.toLowerCase(), aUserlist[x] ));
+		aTOlist.push ( target );
+		setTimeout(async () => { RemoveTOUser(target); }, (1000*spin.res.value) + 5000);
       } else if(spin.res.target === 'sender') {
 		const wasMod = this.twitch.isMod ( cfg.channel.toLowerCase(), spin.sender );
 		console.log ("timing out current user: " + spin.sender + " - mod: " + wasMod );
@@ -778,6 +803,8 @@ class AppState {
             await this.twitch.mod(cfg.channel, spin.sender).catch(err => console.log('Could not remod user after wheel TO!', err));
           }, (1000*spin.res.value) + 5000);
         }
+		aTOlist.push ( spin.sender );
+		setTimeout(async () => { RemoveTOUser(spin.sender); }, (1000*spin.res.value) + 5000);
       }
     }
   }
