@@ -231,7 +231,7 @@ function registerTwitchEvents(state: AppState) {
               const seconds = parseInt(timeStr[1], 10);
               addSeconds = (minutes * 60) + seconds
             }
-			await state.addTime(addSeconds * 1000)
+			await state.addTime(addSeconds)
           }
         }
 
