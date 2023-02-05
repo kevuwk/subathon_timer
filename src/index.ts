@@ -54,6 +54,7 @@ const USE_MOCK = !!process.env.USE_FDGT_MOCK;
 
   let isStarted = false;
   let startedAt = 0;
+  let maxTime = 0;
 
   const resStart = await db.get("SELECT * FROM settings WHERE key='started_at';");
   if(resStart) {
@@ -75,8 +76,15 @@ const USE_MOCK = !!process.env.USE_FDGT_MOCK;
     endingAt = resEndingAt.ending_at;
     console.log(`Found last timer value in data.db: Ending at ${new Date(endingAt).toISOString()}`);
   }
+  
+  const resMaxTime = await db.get("SELECT * FROM settings WHERE key='max_time';");
+  if(resMaxTime) {
+    maxTime = resMaxTime.value;
+    console.log(`Found max_time in data.db: ${new Date(maxTime).toISOString()}`);
+  }
 
-  const appState = new AppState(twitch, db, io, isStarted, startedAt, endingAt, baseTime);
+
+  const appState = new AppState(twitch, db, io, isStarted, startedAt, endingAt, baseTime, maxTime);
 
   registerSocketEvents(appState);
   registerTwitchEvents(appState);
@@ -180,8 +188,97 @@ function registerTwitchEvents(state: AppState) {
         }
 
       }
+	  
+	  {
+
+        // ?maxtime
+        const match = message.match(/^\?maxtime ((\d+:)?\d{2}:\d{2})/);
+        if(match) {
+          if(state.isStarted) {
+            const timeStr = match[1].split(":");
+            let maxSeconds;
+            if(timeStr.length === 3) {
+              const hours = parseInt(timeStr[0], 10);
+              const minutes = parseInt(timeStr[1], 10);
+              const seconds = parseInt(timeStr[2], 10);
+              maxSeconds = (((hours*60) + minutes) * 60) + seconds
+            } else {
+              const minutes = parseInt(timeStr[0], 10);
+              const seconds = parseInt(timeStr[1], 10);
+              maxSeconds = (minutes * 60) + seconds
+            }
+			await state.updateMaxTime(state.startedAt + (maxSeconds * 1000))
+          }
+        }
+
+      }
+	  
+	  {
+
+        // ?addtime
+        const match = message.match(/^\?addtime ((\d+:)?\d{2}:\d{2})/);
+        if(match) {
+          if(state.isStarted) {
+            const timeStr = match[1].split(":");
+            let addSeconds;
+            if(timeStr.length === 3) {
+              const hours = parseInt(timeStr[0], 10);
+              const minutes = parseInt(timeStr[1], 10);
+              const seconds = parseInt(timeStr[2], 10);
+              addSeconds = (((hours*60) + minutes) * 60) + seconds
+            } else {
+              const minutes = parseInt(timeStr[0], 10);
+              const seconds = parseInt(timeStr[1], 10);
+              addSeconds = (minutes * 60) + seconds
+            }
+			await state.addTime(addSeconds)
+          }
+        }
+
+      }
 
     }
+	
+	if(userstate.username == "soundalerts") {
+	
+		const aMessage = message.split(" ");
+		
+		//<user> played <sound> for <amount> Bits!
+		//0 = <user>
+		//played <sound> for 
+		// length - 2 = <amount>
+		// length - 1 = Bits!
+		if (aMessage[aMessage.length - 1] === "Bits!")
+		{
+			const sbits = aMessage[aMessage.length - 2];
+			const bits = parseInt(sbits);
+			if(state.endingAt < Date.now()) return;
+			const multiplier = cfg.time.multipliers.bits;
+			const secondsToAdd = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
+			state.addTime(secondsToAdd);
+			state.displayAddTimeUpdate(secondsToAdd, `${aMessage[0]} (bits)`);
+			await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, aMessage[0]]);
+		}
+		
+		//<user> used <amount> Bits to play <sound>
+		// 0 = <user>
+		// 1 = used
+		// 3 = <amount>
+		// 4 = Bits
+		//to play <sound>
+		if (aMessage[4] === "Bits")
+		{
+			const sbits = aMessage[3];
+			const bits = parseInt(sbits);
+			if(state.endingAt < Date.now()) return;
+			const multiplier = cfg.time.multipliers.bits;
+			const secondsToAdd = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
+			state.addTime(secondsToAdd);
+			state.displayAddTimeUpdate(secondsToAdd, `${aMessage[0]} (bits)`);
+			await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, aMessage[0]]);
+		}
+	}
+	
   });
 
   state.twitch.on('subgift', async (channel: string, username: string, streakMonths: number, recipient: string,
@@ -369,6 +466,8 @@ class AppState {
 
   endingAt: number;
   baseTime: number;
+  
+  maxTime: number;
 
   randomTarget = "definitelynotyannis";
   randomTargetIsMod = false;
@@ -376,7 +475,7 @@ class AppState {
   spins: Map<string, any> = new Map();
 
   constructor(twitch: tmi.Client, db: sqlite.Database, io: socketio.Server,
-              isStarted: boolean, startedAt: number, endingAt: number, baseTime: number) {
+              isStarted: boolean, startedAt: number, endingAt: number, baseTime: number, maxTime: number) {
     this.twitch = twitch;
     this.db = db;
     this.io = io;
@@ -384,6 +483,7 @@ class AppState {
     this.startedAt = startedAt;
     this.endingAt = endingAt;
     this.baseTime = baseTime;
+	this.maxTime = maxTime;
 
     setInterval(async () => {
       if(!this.isStarted || this.endingAt < Date.now()) return;
@@ -410,6 +510,7 @@ class AppState {
   async start(seconds: number) {
     this.isStarted = true;
     this.startedAt = Date.now();
+	this.maxTime = 0;
     this.forceTime(seconds);
     this.io.emit('update_uptime', {'started_at': this.startedAt});
     await this.db.run('INSERT OR REPLACE INTO settings VALUES (?, ?);', ['started_at', this.startedAt]);
@@ -420,9 +521,23 @@ class AppState {
     this.io.emit('update_uptime', {'started_at': this.startedAt});
     await this.db.run('INSERT OR REPLACE INTO settings VALUES (?, ?);', ['started_at', this.startedAt]);
   }
+  
+  async updateMaxTime(newMaxTime: number) {
+    this.maxTime = newMaxTime
+    await this.db.run('INSERT OR REPLACE INTO settings VALUES (?, ?);', ['max_time', this.maxTime]);
+    if ( this.endingAt > this.maxTime ) {
+	  this.endingAt = this.maxTime;
+	}
+    this.io.emit('update_timer', {'ending_at': this.endingAt});
+  }
 
   forceTime(seconds: number) {
     this.endingAt = Date.now() + (seconds * 1000);
+	if ( this.maxTime > 0 ) {
+	  if ( this.endingAt > this.maxTime ) {
+		this.endingAt = this.maxTime;
+	  }
+	}
     this.io.emit('update_timer', {'ending_at': this.endingAt, 'forced': true});
   }
 
@@ -430,13 +545,22 @@ class AppState {
     if(seconds == null) {
       return
     }
-    this.endingAt = this.endingAt + (seconds * 1000);
+	
+	this.endingAt = this.endingAt + (seconds * 1000);
+	if ( this.maxTime > 0 ) {
+	  if ( this.endingAt > this.maxTime ) {
+		this.endingAt = this.maxTime;
+	  }
+	}
     this.io.emit('update_timer', {'ending_at': this.endingAt});
-
   }
 
   displayAddTimeUpdate(seconds: number, reason: string) {
-    this.io.emit('time_add_reason', {'seconds_added': seconds, 'reason': reason})
+	if ( this.maxTime > 0 ) {
+	  if ( this.endingAt != this.maxTime ) {
+		this.io.emit('time_add_reason', {'seconds_added': seconds, 'reason': reason})
+	  }
+	}
   }
 
   async executeSpinResult(spinId: string) {
