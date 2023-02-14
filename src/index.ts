@@ -586,36 +586,36 @@ function registerStreamelementsEvents(state: AppState) {
       const secondsToAdd = Math.round(state.baseTime * event.data.amount * cfg.time.multipliers.donation * 1000) / 1000;
       state.addTime(secondsToAdd);
       state.displayAddTimeUpdate(secondsToAdd, `${event.data.displayName || event.data.username || "anonymous"} (tip)`);
+	  
+	  // quick mafs dono equivalent spin - comparison = (( res.min_subs * tier_1 ) * dono multiplier )
+		
+	  let possibleResults = cfg.wheel.filter(res => (( res.min_subs * cfg.time.multipliers.tier_1 ) * cfg.time.multipliers.donation ) <= event.data.amount);
+	  // can't relate to a twitch user
+	  possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
+	  if(possibleResults.length > 0) {
+	    const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
+	    possibleResults.forEach(r => r.chance = r.chance / totalChances);
+	    const rand = Math.random();
+		let result = possibleResults[0];
+		let resRand = 0;
+		for (const sp of possibleResults) {
+		  resRand += sp.chance;
+		  if(resRand >= rand) {
+		    result = sp;
+			break;
+		  }	
+		}
+
+		const spinId = crypto.randomBytes(8).toString("hex");
+		const spin = {results: possibleResults, random: rand, id: spinId, res: result, sender: "", mod: false};
+		state.spins.set(spinId, spin);
+		state.io.emit('display_spin', spin);
+	  }
     } else if(event.type == 'follower') {
       if(state.endingAt < Date.now()) return;
       const secondsToAdd = Math.round(state.baseTime * cfg.time.multipliers.follow * 1000) / 1000;
       state.addTime(secondsToAdd);
       state.displayAddTimeUpdate(secondsToAdd, `${event.data.displayName} (follow)`);
-	  
-		// quick mafs dono equivalent spin - comparison = (( res.min_subs * tier_1 ) * dono multiplier )
-		
-		let possibleResults = cfg.wheel.filter(res => (( res.min_subs * cfg.time.multipliers.tier_1 ) * cfg.time.multipliers.donation ) <= event.data.amount);
-		// can't relate to a twitch user
-		possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
-		if(possibleResults.length > 0) {
-			const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
-			possibleResults.forEach(r => r.chance = r.chance / totalChances);
-			const rand = Math.random();
-			let result = possibleResults[0];
-			let resRand = 0;
-			for (const sp of possibleResults) {
-				resRand += sp.chance;
-				if(resRand >= rand) {
-					result = sp;
-					break;
-				}	
-			}
-
-			const spinId = crypto.randomBytes(8).toString("hex");
-			const spin = {results: possibleResults, random: rand, id: spinId, res: result, sender: "", mod: false};
-			state.spins.set(spinId, spin);
-			state.io.emit('display_spin', spin);
-		}
     }
   });
 
