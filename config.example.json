@@ -18,38 +18,87 @@
       "donation": 0.2,
       "bits": 0.2,
       "follow": 0
+    },
+	"total": {
+      "tier_1": true,
+      "tier_2": true,
+      "tier_3": true,
+      "donation": true,
+      "bits": true
     }
   },
+  "goals": [
+    {
+      "value": 50,
+      "text": "$50 Gift Card Giveaway"
+    },
+{
+      "value": 100,
+      "text": "Watch Top Twitch Clips"
+    },
+	{
+      "value": 150,
+      "text": "Merch Giveaway"
+    },
+	{
+      "value": 250,
+      "text": "Movie Nights Weekly For A Month"
+    },
+	{
+      "value": 350,
+      "text": "Spicy Pickle Challenge"
+    },
+	{
+      "value": 500,
+      "text": "$200 Amazon Shopping Spree"
+    },
+	{
+      "value": 650,
+      "text": "VR Stream (Chat Picks Games)"
+    },
+	{
+      "value": 800,
+      "text": "Uninstall RL For A Week"
+    },
+	{
+      "value": 1000,
+      "text": "One Week Capped Subathon"
+    },
+	{
+      "value": 1100,
+      "text": "Some random goal as a test"
+    }
+  ],
   "wheel": [
     {
       "type": "time",
-      "value": 300,
+      "value": 60,
       "chance": 0.28,
-      "text": "+5 Minutes",
+      "text": "+1 Minute",
       "color": "#9cf000",
       "min_subs": 5
     },
     {
       "type": "time",
-      "value": -300,
+      "value": -60,
       "chance": 0.28,
-      "text": "-5 Minutes",
+      "text": "-1 Minute",
       "color": "#0000FF",
       "min_subs": 5
     },
     {
       "type": "time",
-      "value": 1800,
+      "value": 120,
       "chance": 0.02,
-      "text": "+30 Minutes",
+      "text": "+2 Minutes",
       "color": "#00990d",
       "min_subs": 5
     },
     {
       "type": "time",
-      "value": -1800,
+      "value": -120,
       "chance": 0.02,
-      "text": "-30 Minutes",
+      "text": "-2 Minutes",
       "color": "#9c0000",
       "min_subs": 5
     },

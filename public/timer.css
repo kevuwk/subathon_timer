@@ -43,6 +43,7 @@ body {
   top: 4%;
   z-index: -1;
   border-radius: 20px;
+  object-fit: cover;
 }
 
 #container {
@@ -56,22 +57,25 @@ body {
 }
 
 .inner-container {
-  margin: 2% 5%;
+  margin: calc(2% + 10px) 4%;
   position: absolute;
-  width: 90%;
-  height: 96%;
+  width: 92%;
+  height: calc(96% - 20px);
   display: flex;
   flex-flow: column;
-  overflow: hidden;
+  /* overflow: hidden; */
 }
 
-#uptime {
+.medium-text, .incentive {
   text-align: center;
   font-size: 2.5em;
   color: var(--secondary-color);
   text-shadow: 0 0 25px rgba(255, 255, 255, 0.7);
   overflow: visible;
-  padding-top: 10px;
+}
+
+#total {
+  position: absolute;
 }
 
 #timer {
@@ -84,9 +88,6 @@ body {
 }
 
 #incentives {
-  text-align: center;
-  font-size: 2.5em;
-  color: var(--primary-color);
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
@@ -97,7 +98,7 @@ body {
 
 .incentive {
   flex-grow: 1;
-  /* flex-basis: 26%; */
+  flex-basis: 26%;
   margin-bottom: 10px;
 }
 
@@ -123,6 +124,46 @@ body {
 #graph_icon {
   transform: translateX(-50%);
 }
+
+.goal-container {
+  --spacing: 20px;
+  --difference-width: 500px;
+  --shift: calc(var(--difference-width) + calc(var(--spacing) * 2));
+  width: 100%;
+  padding: var(--spacing);
+  position: absolute;
+  bottom: calc(var(--spacing) * -1);
+  left: calc(var(--spacing) * -1);
+  white-space: nowrap;
+  overflow-x: hidden;
+  box-sizing: content-box;
+}
+
+#goal {
+  width: fit-content;
+  text-align: left;
+}
+
+.scroll {
+  animation: goal_scroll 15s infinite ease-in-out alternate;
+}
+
+@keyframes goal_scroll {
+  0% {
+    transform: translateX(0px);
+  }
+  50% {
+    transform: translateX(0px);
+  }
+  90% {
+    transform: translateX(calc(var(--shift) * -1));
+  }
+  100% {
+    transform: translateX(calc(var(--shift) * -1));
+  }
+}
+
+
 
 
 

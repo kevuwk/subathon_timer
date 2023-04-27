@@ -11,7 +11,7 @@ import * as tmi from 'tmi.js';
 import crypto from "crypto";
 const USE_MOCK = !!process.env.USE_FDGT_MOCK;
 let aUserlist : string [] = [];
-let aChatlist : string [] = [];
+let aChatlist: { name: string, time: Date }[] = [];
 let aTOlist : string [] = [];
 
 (async () => {
@@ -57,6 +57,7 @@ let aTOlist : string [] = [];
   let isStarted = false;
   let startedAt = 0;
   let maxTime = 0;
+  let total = 0;
 
   const resStart = await db.get("SELECT * FROM settings WHERE key='started_at';");
   if(resStart) {
@@ -85,8 +86,13 @@ let aTOlist : string [] = [];
     console.log(`Found max_time in data.db: ${new Date(maxTime).toISOString()}`);
   }
 
+  const resTotal = await db.get("SELECT * FROM settings WHERE key='total';");
+  if(resTotal) {
+    total = resTotal.value;
+    console.log(`Found total in data.db: ${total}`);
+  }
 
-  const appState = new AppState(twitch, db, io, isStarted, startedAt, endingAt, baseTime, maxTime);
+  const appState = new AppState(twitch, db, io, isStarted, startedAt, endingAt, baseTime, maxTime, total);
 
   registerSocketEvents(appState);
   registerTwitchEvents(appState);
@@ -108,6 +114,9 @@ let aTOlist : string [] = [];
     }
   });
 })();
+
+// remove inactive chatters - naturally every minute also on random timeout
+setInterval(async () => { UpdateChatters(); }, 60000);
 
 function registerTwitchEvents(state: AppState) {
   state.twitch.on('message', async (channel: string, userstate: tmi.ChatUserstate, message: string, self: boolean) => {
@@ -237,6 +246,31 @@ function registerTwitchEvents(state: AppState) {
               addSeconds = (minutes * 60) + seconds
             }
 			await state.addTime(addSeconds)
+			state.displayAddTimeUpdate(addSeconds, `${userstate.username} (?addtime)`);
+          }
+        }
+
+      }
+	  
+	  {
+
+        // ?addalert
+        const match = message.match(/^\?addalert (\d+)/);
+        if(match) {
+          if(state.isStarted) {
+            const bits = parseInt(match[1]);
+			console.log ( bits );
+			const multiplier = cfg.time.multipliers.bits;
+			const addSeconds = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
+			await state.addTime(addSeconds)
+			state.displayAddTimeUpdate(addSeconds, `${userstate.username} (?addalert)`);
+			await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, userstate.username]);
+			
+			if ( cfg.time.total.bits )
+			{
+				const bitEquiv = ((bits * multiplier)/100);
+				await state.addToTotal ( bitEquiv );
+			}
           }
         }
 
@@ -244,7 +278,7 @@ function registerTwitchEvents(state: AppState) {
 
     }
 	
-	if(userstate.username == "soundalerts") {
+	if(userstate.username == "soundalerts"||userstate.username == "kevuwk") {
 	
 		const aMessage = message.split(" ");
 		
@@ -261,8 +295,18 @@ function registerTwitchEvents(state: AppState) {
 				const multiplier = cfg.time.multipliers.bits;
 				const secondsToAdd = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
 				state.addTime(secondsToAdd);
-				state.displayAddTimeUpdate(secondsToAdd, `${aMessage[0]} (bits)`);
+				state.displayAddTimeUpdate(secondsToAdd, `SoundAlert (bits)`);
 				await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, aMessage[0]]);
+				
+				// quick mafs bit equivalent total - ((bits * bits multiplier ) / 100 )
+				
+				// check if bits are included in total
+				if ( cfg.time.total.bits )
+				{
+					const bitEquiv = ((bits * multiplier)/100);
+					await state.addToTotal ( bitEquiv );
+				}
+				//
 				
 				// quick mafs bit equivalent spin - comparison = ((( res.min_subs * tier_1 ) / bits multiplier ) * 100)
 							
@@ -308,8 +352,16 @@ function registerTwitchEvents(state: AppState) {
 				const multiplier = cfg.time.multipliers.bits;
 				const secondsToAdd = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
 				state.addTime(secondsToAdd);
-				state.displayAddTimeUpdate(secondsToAdd, `${aMessage[0]} (bits)`);
+				state.displayAddTimeUpdate(secondsToAdd, `SoundAlert (bits)`);
 				await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, aMessage[0]]);
+				
+				// check if bits are included in total
+				if ( cfg.time.total.bits )
+				{
+				  const bitEquiv = ((bits * multiplier)/100);
+				  await state.addToTotal ( bitEquiv );
+				}
+				//
 				
 				// quick mafs bit equivalent spin - comparison = ((( res.min_subs * tier_1 ) / bits multiplier ) * 100)
 				
@@ -350,6 +402,16 @@ function registerTwitchEvents(state: AppState) {
     const secondsToAdd = Math.round(state.baseTime * multiplier * 1000) / 1000;
     state.addTime(secondsToAdd);
     await state.db.run('INSERT INTO subs VALUES(?, ?, ?, ?, ?);', [Date.now(), state.endingAt, methods.plan||"undefined", username]);
+	
+	// check if tier matters for total
+	if ( totalFromPlan(methods.plan) )
+	{
+		await state.addToTotal ( multiplier );
+	}
+	else
+	{
+		await state.addToTotal ( 1 );
+	}
   });
 
   state.twitch.on('submysterygift', async (channel: string, username: string, numbOfSubs: number,
@@ -357,6 +419,16 @@ function registerTwitchEvents(state: AppState) {
     const multiplier = multiplierFromPlan(methods.plan);
     const secondsAdded = Math.round(state.baseTime * multiplier * 1000 * numbOfSubs) / 1000;
     state.displayAddTimeUpdate(secondsAdded, `${username || "anonymous"} (subgift)`);
+	
+	if ( totalFromPlan(methods.plan) )
+	{
+		await state.addToTotal ( (numbOfSubs * multiplier) );
+	}
+	else
+	{
+		await state.addToTotal ( numbOfSubs );
+	}
+	
     let possibleResults = cfg.wheel.filter(res => res.min_subs <= numbOfSubs);
     if(isWheelBlacklisted(username)) {
       possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
@@ -391,6 +463,16 @@ function registerTwitchEvents(state: AppState) {
     state.addTime(secondsToAdd);
     state.displayAddTimeUpdate(secondsToAdd, `${username} (sub)`);
     await state.db.run('INSERT INTO subs VALUES(?, ?, ?, ?, ?);', [Date.now(), state.endingAt, methods.plan||"undefined", username]);
+	
+	// check if tier matters for total
+	if ( totalFromPlan(methods.plan) )
+	{
+		await state.addToTotal ( multiplier );
+	}
+	else
+	{
+		await state.addToTotal ( 1 );
+	}
   });
 
   state.twitch.on('resub', async (channel: string, username: string, months: number, message: string,
@@ -401,6 +483,16 @@ function registerTwitchEvents(state: AppState) {
     state.addTime(secondsToAdd);
     state.displayAddTimeUpdate(secondsToAdd, `${username || "anonymous"} (sub)`);
     await state.db.run('INSERT INTO subs VALUES(?, ?, ?, ?, ?);', [Date.now(), state.endingAt, methods.plan||"undefined", username]);
+	
+	// check if tier matters for total
+	if ( totalFromPlan(methods.plan) )
+	{
+		await state.addToTotal ( multiplier );
+	}
+	else
+	{
+		await state.addToTotal ( 1 );
+	}
   });
 
   state.twitch.on('cheer', async (channel: string, userstate: tmi.ChatUserstate, _message: string) => {
@@ -411,6 +503,14 @@ function registerTwitchEvents(state: AppState) {
     state.addTime(secondsToAdd);
     state.displayAddTimeUpdate(secondsToAdd, `${userstate.username || "anonymous"} (bits)`);
     await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, userstate.username||"ananonymouscheerer"]);
+	
+	// check if bits are included in total
+	if ( cfg.time.total.bits )
+	{
+	  const bitEquiv = ((bits * multiplier)/100);
+	  await state.addToTotal ( bitEquiv );
+	}
+	//
 	
 	// quick mafs bit equivalent spin - comparison = ((( res.min_subs * tier_1 ) / bits multiplier ) * 100)
 	
@@ -447,7 +547,7 @@ function registerTwitchEvents(state: AppState) {
 	if ( self )
 	{
 		console.log ("getting mods");
-		await state.twitch.mods(cfg.channel.toLowerCase());
+		await state.twitch.mods(cfg.channel.toLowerCase()).catch(err => console.log('Erroring getting mods', err));
 	}
   });
   
@@ -468,6 +568,8 @@ function registerSocketEvents(state: AppState) {
     });
     socket.emit('update_timer', {'ending_at': state.endingAt, 'forced': true});
     socket.emit('update_uptime', {'started_at': state.startedAt});
+	socket.emit('update_total', {'total': Math.floor(state.total)});
+	socket.emit('update_goal', getNextGoal(state.total));
     await state.broadcastGraph();
 
     for(const spin of state.spins.values()) {
@@ -528,13 +630,14 @@ function AddChatter ( user: string )
     let bUserExists = false;
     for (var i = 0; i < aChatlist.length; i++)
     {
-      if ( user == aChatlist[i] )
+      if ( user == aChatlist[i].name )
       {
         bUserExists = true;
+		aChatlist[i].time = new Date();
         break;
       }
     }
-    if (!bUserExists) { /*console.log ("adding chatter: " + user );*/ aChatlist.push ( user ); }
+    if (!bUserExists) { /*console.log ("adding chatter: " + user );*/ aChatlist.push ( { name: user, time: new Date() } ); }
   }
 
 function AddUser ( user: string )
@@ -576,6 +679,21 @@ function AddUser ( user: string )
       }
     }
   }
+  
+  function UpdateChatters ()
+  {
+	let currentTime = new Date();
+	currentTime.setMinutes(currentTime.getMinutes() - 10);
+	for (var i = 0; i < aChatlist.length; i++)
+    {
+      if ( currentTime >= aChatlist[i].time )
+      {
+		aChatlist.splice(i, 1);
+      }
+    }
+  }
+  
+  
 
 function registerStreamelementsEvents(state: AppState) {
   const seSocket = socketioclient(`https://realtime.streamelements.com`, {transports: ['websocket']});
@@ -586,6 +704,11 @@ function registerStreamelementsEvents(state: AppState) {
       const secondsToAdd = Math.round(state.baseTime * event.data.amount * cfg.time.multipliers.donation * 1000) / 1000;
       state.addTime(secondsToAdd);
       state.displayAddTimeUpdate(secondsToAdd, `${event.data.displayName || event.data.username || "anonymous"} (tip)`);
+	  
+	  // check if donos are included in total
+	  const donoEquiv = (event.data.amount * cfg.time.multipliers.donation);
+	  state.addToTotal ( donoEquiv );
+	  //
 	  
 	  // quick mafs dono equivalent spin - comparison = (( res.min_subs * tier_1 ) * dono multiplier )
 		
@@ -652,13 +775,15 @@ class AppState {
   
   maxTime: number;
   
+  total: number;
+  
   randomTarget = "definitelynotyannis";
   randomTargetIsMod = false;
 
   spins: Map<string, any> = new Map();
 
   constructor(twitch: tmi.Client, db: sqlite.Database, io: socketio.Server,
-              isStarted: boolean, startedAt: number, endingAt: number, baseTime: number, maxTime: number) {
+              isStarted: boolean, startedAt: number, endingAt: number, baseTime: number, maxTime: number, total: number) {
     this.twitch = twitch;
     this.db = db;
     this.io = io;
@@ -667,6 +792,7 @@ class AppState {
     this.endingAt = endingAt;
     this.baseTime = baseTime;
 	this.maxTime = maxTime;
+	this.total = total;
 
     setInterval(async () => {
       if(!this.isStarted || this.endingAt < Date.now()) return;
@@ -713,6 +839,20 @@ class AppState {
 	}
     this.io.emit('update_timer', {'ending_at': this.endingAt});
   }
+  
+  async updateTotal(newTotal: number) {
+    this.total = newTotal
+    await this.db.run('INSERT OR REPLACE INTO settings VALUES (?, ?);', ['total', this.total]);
+    this.io.emit('update_total', {'total': Math.floor(this.total)});
+	this.io.emit('update_goal', getNextGoal(this.total));
+  }
+  
+  async addToTotal(addTotal: number) {
+    this.total = this.total + addTotal
+    await this.db.run('INSERT OR REPLACE INTO settings VALUES (?, ?);', ['total', this.total]);
+    this.io.emit('update_total', {'total': Math.floor(this.total)});
+	this.io.emit('update_goal', getNextGoal(this.total));
+  }
 
   forceTime(seconds: number) {
     this.endingAt = Date.now() + (seconds * 1000);
@@ -750,13 +890,16 @@ class AppState {
     if(!this.spins.has(spinId)) return;
     const spin = this.spins.get(spinId);
     this.spins.delete(spinId);
+	
+	
 
     if(spin.res.type === 'time') {
       this.addTime(spin.res.value);
       this.displayAddTimeUpdate(spin.res.value, `${spin.sender} (wheel)`)
     } else if(spin.res.type === 'timeout') {
       if(spin.res.target === 'random') {
-        let checks = 0;
+        UpdateChatters();
+		let checks = 0;
 		let target = "";
 		while ( !target )
 		{
@@ -764,18 +907,19 @@ class AppState {
 			let x = Math.floor(Math.random() * (aChatlist.length - 1));
 			for (var i = 0; i < aUserlist.length; i++)
 			{
-				if ( aChatlist[x].toLowerCase() == aUserlist[i].toLowerCase() )
+				let checkName = aChatlist[x].name.toLowerCase();
+				if ( checkName == aUserlist[i].toLowerCase() )
 				{
-					target = aChatlist[x].toLowerCase();
+					target = checkName;
 				}
-				console.log ("checking user: " + aChatlist[x].toLowerCase() );
+				console.log ("checking user: " + checkName );
 				// check if timed out already
 				for (var j = 0; j < aTOlist.length; j++)
 				{
 					console.log ("TO: " + aTOlist[j] );					
-					if ( aChatlist[x].toLowerCase() == aTOlist[j] )
+					if ( checkName == aTOlist[j] )
 					{
-						console.log ("user timed out: " + aChatlist[x].toLowerCase() );
+						console.log ("user timed out: " + checkName );
 						target = "";
 					}
 				}
@@ -832,5 +976,31 @@ function multiplierFromPlan(plan: tmi.SubMethod|undefined) {
       return cfg.time.multipliers.tier_2;
     case "3000":
       return cfg.time.multipliers.tier_3;
+  }
+}
+
+function totalFromPlan(plan: tmi.SubMethod|undefined) {
+  if(!plan) return cfg.time.multipliers.tier_1;
+  switch (plan) {
+    case "Prime":
+      return cfg.time.total.tier_1;
+    case "1000":
+      return cfg.time.total.tier_1;
+    case "2000":
+      return cfg.time.total.tier_2;
+    case "3000":
+      return cfg.time.total.tier_3;
+  }
+}
+
+function getNextGoal(total: number) {
+  let possibleResults = cfg.goals.filter(res => res.value > total);
+  if ( possibleResults.length > 0 )
+  {
+	return { 'goal': possibleResults[0].value, 'text': possibleResults[0].text };
+  }
+  else
+  {
+	return { 'goal': 0, 'text': false };
   }
 }

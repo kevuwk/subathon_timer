@@ -49,6 +49,31 @@ $(document).ready(() => {
     startedAt = req.started_at;
   })
 
+  const $total = $('#total');
+  socket.on('update_total', (req) => {
+    $total.text ("Total: " + req.total);
+  })
+
+  const $goal = $('#goal');
+  socket.on('update_goal', (req) => {
+	if ( req.goal > 0 )
+	{
+		$goal.text ("Next Goal At " + req.goal + ": " + req.text);
+
+    let container = document.getElementsByClassName("goal-container")[0];
+    let textWidth = document.getElementById("goal").clientWidth;
+    container.style.setProperty("--difference-width", (textWidth - container.clientWidth) + "px");
+    if(textWidth > container.clientWidth) {
+      document.getElementById("goal").classList.add("scroll");
+    } else {
+      document.getElementById("goal").classList.remove("scroll");
+    }
+	}
+	else
+	{
+		$goal.text ("");
+	}
+  })
 
   const $incentives = $('#incentives');
 
@@ -145,7 +170,7 @@ $(document).ready(() => {
   });
   function wheelLogic() {
     if(wheelAnimationRunning || wheelQueue.length <= 0) return;
-	
+
 	wheelAnimationRunning = true;
 
     $wheelText.text('Sub Wheel')
