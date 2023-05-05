@@ -9,6 +9,9 @@
   "use_streamelements": false,
   "streamelements_token": "StreamelementsJWTToken",
   "enable_wheel": true,
+  "twitch_clientid": "x",
+  "twitch_clientsecret": "x",
+  "twitch_refreshtoken": "x",
   "time": {
     "base_value": 60,
     "multipliers": {

@@ -9,10 +9,12 @@ import * as sqlite from 'sqlite'
 import cfg from '../config.json'
 import * as tmi from 'tmi.js';
 import crypto from "crypto";
+import fetch from 'node-fetch';
 const USE_MOCK = !!process.env.USE_FDGT_MOCK;
-let aUserlist : string [] = [];
-let aChatlist: { name: string, time: Date }[] = [];
-let aTOlist : string [] = [];
+let aChatlist: { name: string, user_id: number, time: Date, mod: boolean }[] = [];
+let dTwitchExpire;
+let accessToken: string;
+let broadcaster_id: number;
 
 (async () => {
   // open the database
@@ -115,8 +117,12 @@ let aTOlist : string [] = [];
   });
 })();
 
-// remove inactive chatters - naturally every minute also on random timeout
+// remove inactive chatters - every minute also on random timeout
 setInterval(async () => { UpdateChatters(); }, 60000);
+
+// get twitch API access token and broadcaster_id
+(async () => { await updateToken(); broadcaster_id = await getUserID( cfg.channel ); })();
+
 
 function registerTwitchEvents(state: AppState) {
   state.twitch.on('message', async (channel: string, userstate: tmi.ChatUserstate, message: string, self: boolean) => {
@@ -128,7 +134,7 @@ function registerTwitchEvents(state: AppState) {
       }
     }
 	if(!isWheelBlacklisted(userstate.username||"")) {
-		AddChatter ( userstate.username||"" );
+		AddChatter ( userstate.username||"", (userstate['user-id'] as unknown) as number, userstate.mod || false );
 	}
     if(message.startsWith('?') && isAdmin(userstate.username||"")) {
       {
@@ -259,7 +265,7 @@ function registerTwitchEvents(state: AppState) {
         if(match) {
           if(state.isStarted) {
             const bits = parseInt(match[1]);
-			console.log ( bits );
+			//console.log ( bits );
 			const multiplier = cfg.time.multipliers.bits;
 			const addSeconds = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
 			await state.addTime(addSeconds)
@@ -270,6 +276,7 @@ function registerTwitchEvents(state: AppState) {
 			{
 				const bitEquiv = ((bits * multiplier)/100);
 				await state.addToTotal ( bitEquiv );
+				//console.log ( "1 - " + bitEquiv + " - bits: " + bits);
 			}
           }
         }
@@ -278,7 +285,7 @@ function registerTwitchEvents(state: AppState) {
 
     }
 	
-	if(userstate.username == "soundalerts"||userstate.username == "kevuwk") {
+	if(userstate.username == "soundalerts") {
 	
 		const aMessage = message.split(" ");
 		
@@ -305,6 +312,7 @@ function registerTwitchEvents(state: AppState) {
 				{
 					const bitEquiv = ((bits * multiplier)/100);
 					await state.addToTotal ( bitEquiv );
+					//console.log ( "2 - " + bitEquiv + " - bits: " + bits);
 				}
 				//
 				
@@ -316,7 +324,7 @@ function registerTwitchEvents(state: AppState) {
 				if(isWheelBlacklisted(username)) {
 					possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"));
 				}
-				if(possibleResults.length > 0) {
+				if(possibleResults.length > 0 && cfg.enable_wheel) {
 					const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
 					possibleResults.forEach(r => r.chance = r.chance / totalChances);
 					const rand = Math.random();
@@ -360,6 +368,7 @@ function registerTwitchEvents(state: AppState) {
 				{
 				  const bitEquiv = ((bits * multiplier)/100);
 				  await state.addToTotal ( bitEquiv );
+				  //console.log ( "3 - " + bitEquiv + " - bits: " + bits);
 				}
 				//
 				
@@ -370,7 +379,7 @@ function registerTwitchEvents(state: AppState) {
 				if(isWheelBlacklisted(username)) {
 					possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
 				}
-				if(possibleResults.length > 0) {
+				if(possibleResults.length > 0 && cfg.enable_wheel) {
 					const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
 					possibleResults.forEach(r => r.chance = r.chance / totalChances);
 					const rand = Math.random();
@@ -407,10 +416,12 @@ function registerTwitchEvents(state: AppState) {
 	if ( totalFromPlan(methods.plan) )
 	{
 		await state.addToTotal ( multiplier );
+		//console.log ( "4 - " + multiplier);
 	}
 	else
 	{
 		await state.addToTotal ( 1 );
+		//console.log ( "5 - 1");
 	}
   });
 
@@ -419,21 +430,12 @@ function registerTwitchEvents(state: AppState) {
     const multiplier = multiplierFromPlan(methods.plan);
     const secondsAdded = Math.round(state.baseTime * multiplier * 1000 * numbOfSubs) / 1000;
     state.displayAddTimeUpdate(secondsAdded, `${username || "anonymous"} (subgift)`);
-	
-	if ( totalFromPlan(methods.plan) )
-	{
-		await state.addToTotal ( (numbOfSubs * multiplier) );
-	}
-	else
-	{
-		await state.addToTotal ( numbOfSubs );
-	}
-	
+		
     let possibleResults = cfg.wheel.filter(res => res.min_subs <= numbOfSubs);
     if(isWheelBlacklisted(username)) {
       possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
     }
-    if(possibleResults.length > 0) {
+    if(possibleResults.length > 0 && cfg.enable_wheel) {
       const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
       possibleResults.forEach(r => r.chance = r.chance / totalChances);
       const rand = Math.random();
@@ -468,10 +470,12 @@ function registerTwitchEvents(state: AppState) {
 	if ( totalFromPlan(methods.plan) )
 	{
 		await state.addToTotal ( multiplier );
+		//console.log ( "8 - " + multiplier);
 	}
 	else
 	{
 		await state.addToTotal ( 1 );
+		//console.log ( "9-1");
 	}
   });
 
@@ -488,10 +492,12 @@ function registerTwitchEvents(state: AppState) {
 	if ( totalFromPlan(methods.plan) )
 	{
 		await state.addToTotal ( multiplier );
+		//console.log ( "10 - " + multiplier);
 	}
 	else
 	{
 		await state.addToTotal ( 1 );
+		//console.log ( "11 - 1" );
 	}
   });
 
@@ -509,6 +515,7 @@ function registerTwitchEvents(state: AppState) {
 	{
 	  const bitEquiv = ((bits * multiplier)/100);
 	  await state.addToTotal ( bitEquiv );
+	  //console.log ( "12 - " + bitEquiv + " - bits: " + bits);
 	}
 	//
 	
@@ -519,7 +526,7 @@ function registerTwitchEvents(state: AppState) {
 	if(isWheelBlacklisted(username)) {
 		possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
 	}
-	if(possibleResults.length > 0) {
+	if(possibleResults.length > 0 && cfg.enable_wheel) {
 		const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
 		possibleResults.forEach(r => r.chance = r.chance / totalChances);
 		const rand = Math.random();
@@ -540,20 +547,13 @@ function registerTwitchEvents(state: AppState) {
 	}
   });
   
-  state.twitch.on('join', async (channel: string, user: string, self: boolean) => {
-	if(!isWheelBlacklisted(user)) {
-		AddUser ( user );
-	}
-	if ( self )
-	{
-		console.log ("getting mods");
-		await state.twitch.mods(cfg.channel.toLowerCase()).catch(err => console.log('Erroring getting mods', err));
-	}
-  });
+  /*state.twitch.on('join', async (channel: string, user: string, self: boolean) => {
+  });*/
   
-  state.twitch.on('part', async (channel: string, user: string, self: boolean) => {
-    RemoveUser ( user );
-  });
+  /*state.twitch.on('part', async (channel: string, user: string, self: boolean) => {
+    //RemoveUser ( user );
+	//RemoveChatter ( user );
+  });*/
 }
 
 function registerSocketEvents(state: AppState) {
@@ -625,7 +625,7 @@ function registerStreamlabsEvents(state: AppState) {
   });
 }
 
-function AddChatter ( user: string )
+function AddChatter ( user: string, userId: number, mod: boolean )
   {
     let bUserExists = false;
     for (var i = 0; i < aChatlist.length; i++)
@@ -637,47 +637,7 @@ function AddChatter ( user: string )
         break;
       }
     }
-    if (!bUserExists) { /*console.log ("adding chatter: " + user );*/ aChatlist.push ( { name: user, time: new Date() } ); }
-  }
-
-function AddUser ( user: string )
-  {
-    let bUserExists = false;
-    for (var i = 0; i < aUserlist.length; i++)
-    {
-      if ( user == aUserlist[i] )
-      {
-        bUserExists = true;
-        break;
-      }
-    }
-    if (!bUserExists) { /*console.log ("adding user: " + user );*/ aUserlist.push ( user ); }
-  }
-
-  function RemoveUser ( user: string )
-  {
-    for (var i = 0; i < aUserlist.length; i++)
-    {
-      if ( user == aUserlist[i] )
-      {
-        //console.log ( "Removing User: " + user );
-        aUserlist.splice(i, 1);
-        break;
-      }
-    }
-  }
-  
-  function RemoveTOUser ( user: string )
-  {
-    for (var i = 0; i < aTOlist.length; i++)
-    {
-      if ( user == aTOlist[i] )
-      {
-		//console.log ("removing timed out user: " + user );
-        aTOlist.splice(i, 1);
-        break;
-      }
-    }
+    if (!bUserExists) { /*console.log ("adding chatter: " + user + " - ID: " + userId + " - mod: " + mod );*/ aChatlist.push ( { name: user, user_id: userId, time: new Date(), mod: mod } ); }
   }
   
   function UpdateChatters ()
@@ -693,6 +653,38 @@ function AddUser ( user: string )
     }
   }
   
+  function RemoveChatter ( user: string )
+  {
+    for (var i = 0; i < aChatlist.length; i++)
+    {
+      if ( user == aChatlist[i].name )
+      {
+		//console.log ("removing Chatter: " + user );
+		aChatlist.splice(i, 1);
+        break;
+      }
+    }
+  }
+  
+  function RemoveChatterNumber ( x: number )
+  {
+	//console.log ("removing Chatter: " + aChatlist[x].name );
+	aChatlist.splice(x, 1);
+  }
+  
+  function FindChatter ( user: string )
+  {
+    for (var i = 0; i < aChatlist.length; i++)
+    {
+      if ( user == aChatlist[i].name )
+      {
+		return i;
+      }
+    }
+	return null;
+  }
+ 
+  
   
 
 function registerStreamelementsEvents(state: AppState) {
@@ -706,8 +698,12 @@ function registerStreamelementsEvents(state: AppState) {
       state.displayAddTimeUpdate(secondsToAdd, `${event.data.displayName || event.data.username || "anonymous"} (tip)`);
 	  
 	  // check if donos are included in total
-	  const donoEquiv = (event.data.amount * cfg.time.multipliers.donation);
-	  state.addToTotal ( donoEquiv );
+	  if ( cfg.time.total.donation )
+	  {
+		const donoEquiv = (event.data.amount * cfg.time.multipliers.donation);
+		state.addToTotal ( donoEquiv );
+		//console.log ( "13 - " + donoEquiv + " - dono: " + event.data.amount);
+	  }
 	  //
 	  
 	  // quick mafs dono equivalent spin - comparison = (( res.min_subs * tier_1 ) * dono multiplier )
@@ -715,7 +711,7 @@ function registerStreamelementsEvents(state: AppState) {
 	  let possibleResults = cfg.wheel.filter(res => (( res.min_subs * cfg.time.multipliers.tier_1 ) * cfg.time.multipliers.donation ) <= event.data.amount);
 	  // can't relate to a twitch user
 	  possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
-	  if(possibleResults.length > 0) {
+	  if(possibleResults.length > 0 && cfg.enable_wheel) {
 	    const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
 	    possibleResults.forEach(r => r.chance = r.chance / totalChances);
 	    const rand = Math.random();
@@ -852,6 +848,7 @@ class AppState {
     await this.db.run('INSERT OR REPLACE INTO settings VALUES (?, ?);', ['total', this.total]);
     this.io.emit('update_total', {'total': Math.floor(this.total)});
 	this.io.emit('update_goal', getNextGoal(this.total));
+	//console.log ( "total: " + this.total );
   }
 
   forceTime(seconds: number) {
@@ -898,57 +895,55 @@ class AppState {
       this.displayAddTimeUpdate(spin.res.value, `${spin.sender} (wheel)`)
     } else if(spin.res.type === 'timeout') {
       if(spin.res.target === 'random') {
-        UpdateChatters();
-		let checks = 0;
-		let target = "";
-		while ( !target )
+		UpdateChatters();	
+		let x = Math.floor(Math.random() * (aChatlist.length - 1));
+		if ( x > -1 )
 		{
-			if (checks == 10 ) { break; }
-			let x = Math.floor(Math.random() * (aChatlist.length - 1));
-			for (var i = 0; i < aUserlist.length; i++)
-			{
-				let checkName = aChatlist[x].name.toLowerCase();
-				if ( checkName == aUserlist[i].toLowerCase() )
+			let target = aChatlist[x].user_id
+			if ( !target ) { console.log ( "failed to find a user" ); return; }
+			await timeoutUser ( target, spin.res.value, "WHEEL SPIN" );
+			if(aChatlist[x].mod) {
+				console.log(`Remodding ${target} in ${(1000*spin.res.value) + 5000}ms`);
+				setTimeout(async () => {
+					await addMod (target);
+				}, (1000*spin.res.value) + 5000);
+			}
+			RemoveChatterNumber ( x );
+		}
+		else { console.log ( "no users in list" ); }
+      } else if(spin.res.target === 'sender') {
+		let x = FindChatter ( spin.sender );
+		if ( x )
+		{
+			let target = aChatlist[x].user_id
+			if ( !target ) { console.log ( "failed to find a user" ); return; }	
+			await timeoutUser ( target, spin.res.value, "WHEEL SPIN" );
+			if(aChatlist[x].mod) {
+				console.log(`Remodding ${target} in ${(1000*spin.res.value) + 5000}ms`);
+				setTimeout(async () => {
+					await addMod (target);
+				}, (1000*spin.res.value) + 5000);
+			}
+			RemoveChatterNumber ( x );
+		}
+		else
+		{
+			(async () => {
+				let target =  await getUserID( spin.res.value );
+				if ( target )
 				{
-					target = checkName;
-				}
-				console.log ("checking user: " + checkName );
-				// check if timed out already
-				for (var j = 0; j < aTOlist.length; j++)
-				{
-					console.log ("TO: " + aTOlist[j] );					
-					if ( checkName == aTOlist[j] )
+					let isaMod = await isMod ( target );
+					await timeoutUser ( target, spin.res.value, "WHEEL SPIN" );
+					if ( isaMod )
 					{
-						console.log ("user timed out: " + checkName );
-						target = "";
+						console.log(`Remodding ${target} in ${(1000*spin.res.value) + 5000}ms`);
+						setTimeout(async () => {
+							await addMod (target);
+						}, (1000*spin.res.value) + 5000);
 					}
 				}
-			}
-			checks++;
+			})();
 		}
-		if ( !target ) { console.log ( "failed to find a user" ); return; }
-        const targetIsMod = this.twitch.isMod ( cfg.channel.toLowerCase(), target );
-        await this.twitch.timeout(cfg.channel, target, spin.res.value, "WHEEL SPIN").catch(err => console.log('Could not execute wheel TO!', err));
-        if(targetIsMod) {
-          console.log(`Remodding ${target} in ${(1000*spin.res.value) + 5000}ms`);
-          setTimeout(async () => {
-            await this.twitch.mod(cfg.channel, target).catch(err => console.log('Could not remod user after wheel TO!', err));
-          }, (1000*spin.res.value) + 5000);
-        }
-		aTOlist.push ( target );
-		setTimeout(async () => { RemoveTOUser(target); }, (1000*spin.res.value) + 5000);
-      } else if(spin.res.target === 'sender') {
-		const wasMod = this.twitch.isMod ( cfg.channel.toLowerCase(), spin.sender );
-		console.log ("timing out current user: " + spin.sender + " - mod: " + wasMod );
-        await this.twitch.timeout(cfg.channel, spin.sender, spin.res.value, "WHEEL SPIN").catch(err => console.log('Could not execute wheel TO!', err));
-        if(wasMod) {
-          console.log(`Remodding ${spin.sender} in ${(1000*spin.res.value) + 5000}ms`);
-          setTimeout(async () => {
-            await this.twitch.mod(cfg.channel, spin.sender).catch(err => console.log('Could not remod user after wheel TO!', err));
-          }, (1000*spin.res.value) + 5000);
-        }
-		aTOlist.push ( spin.sender );
-		setTimeout(async () => { RemoveTOUser(spin.sender); }, (1000*spin.res.value) + 5000);
       }
     }
   }
@@ -1003,4 +998,143 @@ function getNextGoal(total: number) {
   {
 	return { 'goal': 0, 'text': false };
   }
+}
+
+async function updateToken()
+{
+	console.log ( "Twitch Token Refresh" );
+	let jsonBlocks;
+	try
+	{
+		let sBody = "grant_type=refresh_token&refresh_token=" + cfg.twitch_refreshtoken + "&client_id=" + cfg.twitch_clientid + "&client_secret=" + cfg.twitch_clientsecret;
+		let options = {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-www-form-urlencoded',
+			},
+			body: sBody
+		};
+		var response = await fetch('https://id.twitch.tv/oauth2/token', options);
+		jsonBlocks = await response.json();
+		accessToken = jsonBlocks.access_token;
+		//console.log ("access token: " + accessToken );
+		setTimeout(function() { updateToken() },((jsonBlocks.expires_in - 100)*1000));
+
+		dTwitchExpire = new Date()
+		dTwitchExpire.setSeconds( dTwitchExpire.getSeconds() + jsonBlocks.expires_in );
+		
+	} catch (e) {
+		// handle error
+		console.error(e)
+		console.log ( "Twitch Token Error" );
+		setTimeout(function() { updateToken() },60000);
+	}
+}
+
+async function addMod( user_id: number )
+{
+	//console.log ( "Adding Mod" );
+	let auth = "Bearer " + accessToken;
+	let jsonBlocks;
+	try
+	{
+		let options = {
+			method: 'POST',
+			headers: {
+				'Client-Id': cfg.twitch_clientid,
+				'Authorization': auth
+			}
+		};
+		var response = await fetch("https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=" + broadcaster_id + "&user_id=" + user_id, options);
+		//jsonBlocks = await response.json();
+		//console.log(response.status);
+		if ( response.status != 204 ) { console.log ( "Issue adding mod" ); }
+		
+	} catch (e) {
+		// handle error
+		console.error(e)
+		console.log ( "Add Mod Error" );
+	}
+}
+
+async function timeoutUser( user_id: number, timeout_value: number, timeout_reason: string )
+{
+	//console.log ( "Timing out user" );
+	let auth = "Bearer " + accessToken;
+	let jsonBlocks;
+	try
+	{
+		let sBody = JSON.stringify({"data": {"user_id": user_id,"duration": timeout_value,"reason": timeout_reason}})
+		//console.log (sBody);
+		let options = {
+			method: 'POST',
+			headers: {
+				'Client-Id': cfg.twitch_clientid,
+				'Authorization': auth,
+				'Content-Type': 'application/json'
+			},
+			body: sBody
+		};
+		var response = await fetch("https://api.twitch.tv/helix/moderation/bans?broadcaster_id=" + broadcaster_id + "&moderator_id=" + broadcaster_id, options);
+		jsonBlocks = await response.json();
+		//console.log ( jsonBlocks);
+	} catch (e) {
+		// handle error
+		console.error(e)
+		console.log ( "Timeout Error" );
+	}
+}
+
+async function getUserID( user: string )
+{
+	//console.log ( "Getting User ID" );
+	let auth = "Bearer " + accessToken;
+	let jsonBlocks;
+	try
+	{
+		let options = {
+			method: 'GET',
+			headers: {
+				'Client-Id': cfg.twitch_clientid,
+				'Authorization': auth
+			}
+		};
+		var response = await fetch("https://api.twitch.tv/helix/users?login=" + user, options);
+		jsonBlocks = await response.json();
+		//console.log (jsonBlocks);
+		//console.log (jsonBlocks.data[0].id);
+		return jsonBlocks.data[0].id;
+	} catch (e) {
+		// handle error
+		console.error(e)
+		console.log ( "Get User Error" );
+		return null;
+	}
+	return null;
+}
+
+async function isMod( user_id: number )
+{
+	//console.log ( "Checking Mod" );
+	let auth = "Bearer " + accessToken;
+	let jsonBlocks;
+	try
+	{
+		let options = {
+			method: 'GET',
+			headers: {
+				'Client-Id': cfg.twitch_clientid,
+				'Authorization': auth
+			}
+		};
+		var response = await fetch("https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=" + broadcaster_id + "&user_id=" + user_id, options);
+		jsonBlocks = await response.json();
+		//console.log(jsonBlocks);
+		if ( jsonBlocks.data[0] ) { /*console.log ( "is a mod" );*/ return true; }
+		else { /*console.log ( "is not a mod" );*/ return false; }
+	} catch (e) {
+		// handle error
+		console.error(e)
+		//console.log ( "Check Mod Error" );
+	}
 }
