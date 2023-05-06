@@ -121,7 +121,15 @@ let broadcaster_id: number;
 setInterval(async () => { UpdateChatters(); }, 60000);
 
 // get twitch API access token and broadcaster_id
-(async () => { await updateToken(); broadcaster_id = await getUserID( cfg.channel ); })();
+let intBroadcaster = setInterval ( async () => { getBroadcasterID(); }, 60000 );
+(async () => { await updateToken(); getBroadcasterID(); })();
+
+async function getBroadcasterID ( )
+{
+	broadcaster_id = await getUserID ( cfg.channel );
+	if ( broadcaster_id ) { clearInterval(intBroadcaster); }
+	else { console.log ( "Problem retrieving broadcaster ID for " + cfg.channel + ". Will try again in 1 minute. Timeouts and re-mod will not work during this period" ); }
+}
 
 
 function registerTwitchEvents(state: AppState) {
@@ -265,7 +273,6 @@ function registerTwitchEvents(state: AppState) {
         if(match) {
           if(state.isStarted) {
             const bits = parseInt(match[1]);
-			//console.log ( bits );
 			const multiplier = cfg.time.multipliers.bits;
 			const addSeconds = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
 			await state.addTime(addSeconds)
@@ -276,7 +283,6 @@ function registerTwitchEvents(state: AppState) {
 			{
 				const bitEquiv = ((bits * multiplier)/100);
 				await state.addToTotal ( bitEquiv );
-				//console.log ( "1 - " + bitEquiv + " - bits: " + bits);
 			}
           }
         }
@@ -312,9 +318,7 @@ function registerTwitchEvents(state: AppState) {
 				{
 					const bitEquiv = ((bits * multiplier)/100);
 					await state.addToTotal ( bitEquiv );
-					//console.log ( "2 - " + bitEquiv + " - bits: " + bits);
 				}
-				//
 				
 				// quick mafs bit equivalent spin - comparison = ((( res.min_subs * tier_1 ) / bits multiplier ) * 100)
 							
@@ -368,9 +372,7 @@ function registerTwitchEvents(state: AppState) {
 				{
 				  const bitEquiv = ((bits * multiplier)/100);
 				  await state.addToTotal ( bitEquiv );
-				  //console.log ( "3 - " + bitEquiv + " - bits: " + bits);
 				}
-				//
 				
 				// quick mafs bit equivalent spin - comparison = ((( res.min_subs * tier_1 ) / bits multiplier ) * 100)
 				
@@ -416,12 +418,10 @@ function registerTwitchEvents(state: AppState) {
 	if ( totalFromPlan(methods.plan) )
 	{
 		await state.addToTotal ( multiplier );
-		//console.log ( "4 - " + multiplier);
 	}
 	else
 	{
 		await state.addToTotal ( 1 );
-		//console.log ( "5 - 1");
 	}
   });
 
@@ -470,12 +470,10 @@ function registerTwitchEvents(state: AppState) {
 	if ( totalFromPlan(methods.plan) )
 	{
 		await state.addToTotal ( multiplier );
-		//console.log ( "8 - " + multiplier);
 	}
 	else
 	{
 		await state.addToTotal ( 1 );
-		//console.log ( "9-1");
 	}
   });
 
@@ -492,12 +490,10 @@ function registerTwitchEvents(state: AppState) {
 	if ( totalFromPlan(methods.plan) )
 	{
 		await state.addToTotal ( multiplier );
-		//console.log ( "10 - " + multiplier);
 	}
 	else
 	{
 		await state.addToTotal ( 1 );
-		//console.log ( "11 - 1" );
 	}
   });
 
@@ -515,9 +511,7 @@ function registerTwitchEvents(state: AppState) {
 	{
 	  const bitEquiv = ((bits * multiplier)/100);
 	  await state.addToTotal ( bitEquiv );
-	  //console.log ( "12 - " + bitEquiv + " - bits: " + bits);
 	}
-	//
 	
 	// quick mafs bit equivalent spin - comparison = ((( res.min_subs * tier_1 ) / bits multiplier ) * 100)
 	
@@ -659,7 +653,6 @@ function AddChatter ( user: string, userId: number, mod: boolean )
     {
       if ( user == aChatlist[i].name )
       {
-		//console.log ("removing Chatter: " + user );
 		aChatlist.splice(i, 1);
         break;
       }
@@ -668,7 +661,6 @@ function AddChatter ( user: string, userId: number, mod: boolean )
   
   function RemoveChatterNumber ( x: number )
   {
-	//console.log ("removing Chatter: " + aChatlist[x].name );
 	aChatlist.splice(x, 1);
   }
   
@@ -702,9 +694,7 @@ function registerStreamelementsEvents(state: AppState) {
 	  {
 		const donoEquiv = (event.data.amount * cfg.time.multipliers.donation);
 		state.addToTotal ( donoEquiv );
-		//console.log ( "13 - " + donoEquiv + " - dono: " + event.data.amount);
 	  }
-	  //
 	  
 	  // quick mafs dono equivalent spin - comparison = (( res.min_subs * tier_1 ) * dono multiplier )
 		
@@ -848,7 +838,6 @@ class AppState {
     await this.db.run('INSERT OR REPLACE INTO settings VALUES (?, ?);', ['total', this.total]);
     this.io.emit('update_total', {'total': Math.floor(this.total)});
 	this.io.emit('update_goal', getNextGoal(this.total));
-	//console.log ( "total: " + this.total );
   }
 
   forceTime(seconds: number) {
@@ -1017,7 +1006,6 @@ async function updateToken()
 		var response = await fetch('https://id.twitch.tv/oauth2/token', options);
 		jsonBlocks = await response.json();
 		accessToken = jsonBlocks.access_token;
-		//console.log ("access token: " + accessToken );
 		setTimeout(function() { updateToken() },((jsonBlocks.expires_in - 100)*1000));
 
 		dTwitchExpire = new Date()
@@ -1025,7 +1013,7 @@ async function updateToken()
 		
 	} catch (e) {
 		// handle error
-		console.error(e)
+		//console.error(e)
 		console.log ( "Twitch Token Error" );
 		setTimeout(function() { updateToken() },60000);
 	}
@@ -1046,13 +1034,11 @@ async function addMod( user_id: number )
 			}
 		};
 		var response = await fetch("https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=" + broadcaster_id + "&user_id=" + user_id, options);
-		//jsonBlocks = await response.json();
-		//console.log(response.status);
 		if ( response.status != 204 ) { console.log ( "Issue adding mod" ); }
 		
 	} catch (e) {
 		// handle error
-		console.error(e)
+		//console.error(e)
 		console.log ( "Add Mod Error" );
 	}
 }
@@ -1065,7 +1051,6 @@ async function timeoutUser( user_id: number, timeout_value: number, timeout_reas
 	try
 	{
 		let sBody = JSON.stringify({"data": {"user_id": user_id,"duration": timeout_value,"reason": timeout_reason}})
-		//console.log (sBody);
 		let options = {
 			method: 'POST',
 			headers: {
@@ -1077,10 +1062,9 @@ async function timeoutUser( user_id: number, timeout_value: number, timeout_reas
 		};
 		var response = await fetch("https://api.twitch.tv/helix/moderation/bans?broadcaster_id=" + broadcaster_id + "&moderator_id=" + broadcaster_id, options);
 		jsonBlocks = await response.json();
-		//console.log ( jsonBlocks);
 	} catch (e) {
 		// handle error
-		console.error(e)
+		//console.error(e)
 		console.log ( "Timeout Error" );
 	}
 }
@@ -1101,12 +1085,25 @@ async function getUserID( user: string )
 		};
 		var response = await fetch("https://api.twitch.tv/helix/users?login=" + user, options);
 		jsonBlocks = await response.json();
-		//console.log (jsonBlocks);
-		//console.log (jsonBlocks.data[0].id);
-		return jsonBlocks.data[0].id;
+		if ( response.status != 200 )
+		{
+			return null;
+		}
+		else
+		{
+			if ( jsonBlocks.data[0] )
+			{
+				return jsonBlocks.data[0].id;
+			}
+			else 
+			{ 
+				return null;
+			}
+			
+		}
 	} catch (e) {
 		// handle error
-		console.error(e)
+		//console.error(e)
 		console.log ( "Get User Error" );
 		return null;
 	}
@@ -1129,12 +1126,11 @@ async function isMod( user_id: number )
 		};
 		var response = await fetch("https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=" + broadcaster_id + "&user_id=" + user_id, options);
 		jsonBlocks = await response.json();
-		//console.log(jsonBlocks);
-		if ( jsonBlocks.data[0] ) { /*console.log ( "is a mod" );*/ return true; }
-		else { /*console.log ( "is not a mod" );*/ return false; }
+		if ( jsonBlocks.data[0] ) { return true; }
+		else { return false; }
 	} catch (e) {
 		// handle error
-		console.error(e)
-		//console.log ( "Check Mod Error" );
+		//console.error(e)
+		console.log ( "Check Mod Error" );
 	}
 }
