@@ -1022,90 +1022,111 @@ async function updateToken()
 async function addMod( user_id: number )
 {
 	//console.log ( "Adding Mod" );
-	let auth = "Bearer " + accessToken;
-	let jsonBlocks;
-	try
+	if ( accessToken )
 	{
-		let options = {
-			method: 'POST',
-			headers: {
-				'Client-Id': cfg.twitch_clientid,
-				'Authorization': auth
-			}
-		};
-		var response = await fetch("https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=" + broadcaster_id + "&user_id=" + user_id, options);
-		if ( response.status != 204 ) { console.log ( "Issue adding mod" ); }
-		
-	} catch (e) {
-		// handle error
-		//console.error(e)
-		console.log ( "Add Mod Error" );
+		let auth = "Bearer " + accessToken;
+		let jsonBlocks;
+		try
+		{
+			let options = {
+				method: 'POST',
+				headers: {
+					'Client-Id': cfg.twitch_clientid,
+					'Authorization': auth
+				}
+			};
+			var response = await fetch("https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=" + broadcaster_id + "&user_id=" + user_id, options);
+			if ( response.status != 204 ) { console.log ( "Issue adding mod" ); }
+			
+		} catch (e) {
+			// handle error
+			//console.error(e)
+			console.log ( "Add Mod Error" );
+		}
+	}
+	else
+	{
+		console.log ( "No access token available" );
 	}
 }
 
 async function timeoutUser( user_id: number, timeout_value: number, timeout_reason: string )
 {
 	//console.log ( "Timing out user" );
-	let auth = "Bearer " + accessToken;
-	let jsonBlocks;
-	try
+	if ( accessToken )
 	{
-		let sBody = JSON.stringify({"data": {"user_id": user_id,"duration": timeout_value,"reason": timeout_reason}})
-		let options = {
-			method: 'POST',
-			headers: {
-				'Client-Id': cfg.twitch_clientid,
-				'Authorization': auth,
-				'Content-Type': 'application/json'
-			},
-			body: sBody
-		};
-		var response = await fetch("https://api.twitch.tv/helix/moderation/bans?broadcaster_id=" + broadcaster_id + "&moderator_id=" + broadcaster_id, options);
-		jsonBlocks = await response.json();
-	} catch (e) {
-		// handle error
-		//console.error(e)
-		console.log ( "Timeout Error" );
+		let auth = "Bearer " + accessToken;
+		let jsonBlocks;
+		try
+		{
+			let sBody = JSON.stringify({"data": {"user_id": user_id,"duration": timeout_value,"reason": timeout_reason}})
+			let options = {
+				method: 'POST',
+				headers: {
+					'Client-Id': cfg.twitch_clientid,
+					'Authorization': auth,
+					'Content-Type': 'application/json'
+				},
+				body: sBody
+			};
+			var response = await fetch("https://api.twitch.tv/helix/moderation/bans?broadcaster_id=" + broadcaster_id + "&moderator_id=" + broadcaster_id, options);
+			jsonBlocks = await response.json();
+		} catch (e) {
+			// handle error
+			//console.error(e)
+			console.log ( "Timeout Error" );
+		}
+	}
+	else
+	{
+		console.log ( "No access token available" );
 	}
 }
 
 async function getUserID( user: string )
 {
 	//console.log ( "Getting User ID" );
-	let auth = "Bearer " + accessToken;
-	let jsonBlocks;
-	try
+	if ( accessToken )
 	{
-		let options = {
-			method: 'GET',
-			headers: {
-				'Client-Id': cfg.twitch_clientid,
-				'Authorization': auth
-			}
-		};
-		var response = await fetch("https://api.twitch.tv/helix/users?login=" + user, options);
-		jsonBlocks = await response.json();
-		if ( response.status != 200 )
+		let auth = "Bearer " + accessToken;
+		let jsonBlocks;
+		try
 		{
-			return null;
-		}
-		else
-		{
-			if ( jsonBlocks.data[0] )
+			let options = {
+				method: 'GET',
+				headers: {
+					'Client-Id': cfg.twitch_clientid,
+					'Authorization': auth
+				}
+			};
+			var response = await fetch("https://api.twitch.tv/helix/users?login=" + user, options);
+			jsonBlocks = await response.json();
+			if ( response.status != 200 )
 			{
-				return jsonBlocks.data[0].id;
-			}
-			else 
-			{ 
 				return null;
 			}
-			
+			else
+			{
+				if ( jsonBlocks.data[0] )
+				{
+					return jsonBlocks.data[0].id;
+				}
+				else 
+				{ 
+					return null;
+				}
+				
+			}
+		} catch (e) {
+			// handle error
+			//console.error(e)
+			console.log ( "Get User Error" );
+			return null;
 		}
-	} catch (e) {
-		// handle error
-		//console.error(e)
-		console.log ( "Get User Error" );
-		return null;
+	}
+	else
+	{
+		console.log ( "No access token available" );
 	}
 	return null;
 }
@@ -1113,24 +1134,31 @@ async function getUserID( user: string )
 async function isMod( user_id: number )
 {
 	//console.log ( "Checking Mod" );
-	let auth = "Bearer " + accessToken;
-	let jsonBlocks;
-	try
+	if ( accessToken )
 	{
-		let options = {
-			method: 'GET',
-			headers: {
-				'Client-Id': cfg.twitch_clientid,
-				'Authorization': auth
-			}
-		};
-		var response = await fetch("https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=" + broadcaster_id + "&user_id=" + user_id, options);
-		jsonBlocks = await response.json();
-		if ( jsonBlocks.data[0] ) { return true; }
-		else { return false; }
-	} catch (e) {
-		// handle error
-		//console.error(e)
-		console.log ( "Check Mod Error" );
+		let auth = "Bearer " + accessToken;
+		let jsonBlocks;
+		try
+		{
+			let options = {
+				method: 'GET',
+				headers: {
+					'Client-Id': cfg.twitch_clientid,
+					'Authorization': auth
+				}
+			};
+			var response = await fetch("https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=" + broadcaster_id + "&user_id=" + user_id, options);
+			jsonBlocks = await response.json();
+			if ( jsonBlocks.data[0] ) { return true; }
+			else { return false; }
+		} catch (e) {
+			// handle error
+			//console.error(e)
+			console.log ( "Check Mod Error" );
+		}
+	}
+	else
+	{
+		console.log ( "No access token available" );
 	}
 }
