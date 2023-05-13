@@ -288,6 +288,28 @@ function registerTwitchEvents(state: AppState) {
         }
 
       }
+	  
+	  {
+        // ?addtotal
+        const match = message.match(/^\?addtotal (\d+)/);
+        if(match) {
+          if(state.isStarted) {
+            const iTotal = parseInt(match[1]);
+			await state.addToTotal ( iTotal );
+          }
+        }
+      }
+	  
+	  {
+        // ?removetotal
+        const match = message.match(/^\?removetotal (\d+)/);
+        if(match) {
+          if(state.isStarted) {
+            const iTotal = parseInt(match[1]);
+			await state.addToTotal ( -iTotal );
+          }
+        }
+      }
 
     }
 	
@@ -835,6 +857,7 @@ class AppState {
   
   async addToTotal(addTotal: number) {
     this.total = this.total + addTotal
+	if ( this.total < 0 ) { this.total = 0; };
     await this.db.run('INSERT OR REPLACE INTO settings VALUES (?, ?);', ['total', this.total]);
     this.io.emit('update_total', {'total': Math.floor(this.total)});
 	this.io.emit('update_goal', getNextGoal(this.total));
