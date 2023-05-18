@@ -122,6 +122,14 @@
       "text": "Random timeout",
       "color": "#00fcd2",
       "min_subs": 5
+    },
+	{
+      "type": "emoteonly",
+      "value": 120,
+      "chance": 0.20,
+      "text": "Emote-Only Mode",
+      "color": "#ffff00",
+      "min_subs": 5
     }
   ]
 }

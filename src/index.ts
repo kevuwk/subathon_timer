@@ -128,7 +128,7 @@ async function getBroadcasterID ( )
 {
 	broadcaster_id = await getUserID ( cfg.channel );
 	if ( broadcaster_id ) { clearInterval(intBroadcaster); }
-	else { console.log ( "Problem retrieving broadcaster ID for " + cfg.channel + ". Will try again in 1 minute. Timeouts and re-mod will not work during this period" ); }
+	else { console.log ( "Problem retrieving broadcaster ID for " + cfg.channel + ". Will try again in 1 minute. Timeouts, re-mod and emote-only mode will not work during this period" ); }
 }
 
 
@@ -957,7 +957,10 @@ class AppState {
 			})();
 		}
       }
-    }
+    } else if(spin.res.type === 'emoteonly') {
+		emoteMode( true );
+		setTimeout(async () => { emoteMode ( false ); }, (1000*spin.res.value));
+	}
   }
 
   async broadcastGraph() {
@@ -1178,6 +1181,39 @@ async function isMod( user_id: number )
 			// handle error
 			//console.error(e)
 			console.log ( "Check Mod Error" );
+		}
+	}
+	else
+	{
+		console.log ( "No access token available" );
+	}
+}
+
+async function emoteMode( bFlag: boolean )
+{
+	//console.log ( "Timing out user" );
+	if ( accessToken )
+	{
+		let auth = "Bearer " + accessToken;
+		let jsonBlocks;
+		try
+		{
+			let sBody = JSON.stringify({"emote_mode": bFlag})
+			let options = {
+				method: 'PATCH',
+				headers: {
+					'Client-Id': cfg.twitch_clientid,
+					'Authorization': auth,
+					'Content-Type': 'application/json'
+				},
+				body: sBody
+			};
+			var response = await fetch("https://api.twitch.tv/helix/chat/settings?broadcaster_id=" + broadcaster_id + "&moderator_id=" + broadcaster_id, options);
+			jsonBlocks = await response.json();
+		} catch (e) {
+			// handle error
+			//console.error(e)
+			console.log ( "Emote Mode Error" );
 		}
 	}
 	else
