@@ -274,6 +274,7 @@ function registerTwitchEvents(state: AppState) {
           if(state.isStarted) {
             const bits = parseInt(match[1]);
 			const multiplier = cfg.time.multipliers.bits;
+			const subeq = cfg.time.subeq.bits;
 			const addSeconds = Math.round((bits / 100) * multiplier * state.baseTime * 1000) / 1000;
 			await state.addTime(addSeconds)
 			state.displayAddTimeUpdate(addSeconds, `${userstate.username} (?addalert)`);
@@ -281,7 +282,7 @@ function registerTwitchEvents(state: AppState) {
 			
 			if ( cfg.time.total.bits )
 			{
-				const bitEquiv = ((bits * multiplier)/100);
+				const bitEquiv = ((bits * subeq)/100);
 				await state.addToTotal ( bitEquiv );
 			}
           }
@@ -332,13 +333,14 @@ function registerTwitchEvents(state: AppState) {
 				state.addTime(secondsToAdd);
 				state.displayAddTimeUpdate(secondsToAdd, `SoundAlert (bits)`);
 				await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, aMessage[0]]);
+				const subeq = cfg.time.subeq.bits;
 				
 				// quick mafs bit equivalent total - ((bits * bits multiplier ) / 100 )
 				
 				// check if bits are included in total
 				if ( cfg.time.total.bits )
 				{
-					const bitEquiv = ((bits * multiplier)/100);
+					const bitEquiv = ((bits * subeq)/100);
 					await state.addToTotal ( bitEquiv );
 				}
 				
@@ -346,7 +348,7 @@ function registerTwitchEvents(state: AppState) {
 							
 				const username = aMessage[0];
 				
-				let possibleResults = cfg.wheel.filter(res => ((( res.min_subs * cfg.time.multipliers.tier_1 ) / cfg.time.multipliers.bits ) * 100) <= bits);
+				let possibleResults = cfg.wheel.filter(res => ((( res.min_subs * cfg.time.subeq.tier_1 ) / cfg.time.subeq.bits ) * 100) <= bits);
 				if(isWheelBlacklisted(username)) {
 					possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"));
 				}
@@ -388,18 +390,19 @@ function registerTwitchEvents(state: AppState) {
 				state.addTime(secondsToAdd);
 				state.displayAddTimeUpdate(secondsToAdd, `SoundAlert (bits)`);
 				await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, aMessage[0]]);
+				const subeq = cfg.time.subeq.bits;
 				
 				// check if bits are included in total
 				if ( cfg.time.total.bits )
 				{
-				  const bitEquiv = ((bits * multiplier)/100);
+				  const bitEquiv = ((bits * subeq)/100);
 				  await state.addToTotal ( bitEquiv );
 				}
 				
 				// quick mafs bit equivalent spin - comparison = ((( res.min_subs * tier_1 ) / bits multiplier ) * 100)
 				
 				const username = aMessage[0];
-				let possibleResults = cfg.wheel.filter(res => ((( res.min_subs * cfg.time.multipliers.tier_1 ) / cfg.time.multipliers.bits ) * 100) <= bits);
+				let possibleResults = cfg.wheel.filter(res => ((( res.min_subs * cfg.time.subeq.tier_1 ) / cfg.time.subeq.bits ) * 100) <= bits);
 				if(isWheelBlacklisted(username)) {
 					possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
 				}
@@ -527,18 +530,19 @@ function registerTwitchEvents(state: AppState) {
     state.addTime(secondsToAdd);
     state.displayAddTimeUpdate(secondsToAdd, `${userstate.username || "anonymous"} (bits)`);
     await state.db.run('INSERT INTO cheers VALUES(?, ?, ?, ?);', [Date.now(), state.endingAt, bits, userstate.username||"ananonymouscheerer"]);
+	const subeq = cfg.time.subeq.bits;
 	
 	// check if bits are included in total
 	if ( cfg.time.total.bits )
 	{
-	  const bitEquiv = ((bits * multiplier)/100);
+	  const bitEquiv = ((bits * subeq)/100);
 	  await state.addToTotal ( bitEquiv );
 	}
 	
 	// quick mafs bit equivalent spin - comparison = ((( res.min_subs * tier_1 ) / bits multiplier ) * 100)
 	
 	const username = (userstate.username || "anonymous");
-	let possibleResults = cfg.wheel.filter(res => ((( res.min_subs * cfg.time.multipliers.tier_1 ) / cfg.time.multipliers.bits ) * 100) <= bits);
+	let possibleResults = cfg.wheel.filter(res => ((( res.min_subs * cfg.time.subeq.tier_1 ) / cfg.time.subeq.bits ) * 100) <= bits);
 	if(isWheelBlacklisted(username)) {
 		possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
 	}
@@ -618,17 +622,18 @@ function registerStreamlabsEvents(state: AppState) {
         const secondsToAdd = Math.round(state.baseTime * amount * cfg.time.multipliers.donation * 1000) / 1000;
         state.addTime(secondsToAdd);
         state.displayAddTimeUpdate(secondsToAdd, `${msg.name} (tip)`);
+		const subeq = cfg.time.subeq.donation;
 		
 		// check if donos are included in total
 		if ( cfg.time.total.donation )
 		{
-			const donoEquiv = (amount * cfg.time.multipliers.donation);
+			const donoEquiv = (amount * subeq);
 			state.addToTotal ( donoEquiv );
 		}
 	  
 		// quick mafs dono equivalent spin - comparison = (( res.min_subs * tier_1 ) / dono multiplier )
 		
-		let possibleResults = cfg.wheel.filter(res => (( res.min_subs * cfg.time.multipliers.tier_1 ) / cfg.time.multipliers.donation ) <= amount);
+		let possibleResults = cfg.wheel.filter(res => (( res.min_subs * cfg.time.subeq.tier_1 ) / cfg.time.subeq.donation ) <= amount);
 		// can't relate to a twitch user
 		possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
 		if(possibleResults.length > 0 && cfg.enable_wheel) {
@@ -742,17 +747,18 @@ function registerStreamelementsEvents(state: AppState) {
       const secondsToAdd = Math.round(state.baseTime * event.data.amount * cfg.time.multipliers.donation * 1000) / 1000;
       state.addTime(secondsToAdd);
       state.displayAddTimeUpdate(secondsToAdd, `${event.data.displayName || event.data.username || "anonymous"} (tip)`);
+	  const subeq = cfg.time.subeq.donation;
 	  
 	  // check if donos are included in total
 	  if ( cfg.time.total.donation )
 	  {
-		const donoEquiv = (event.data.amount * cfg.time.multipliers.donation);
+		const donoEquiv = (event.data.amount * subeq);
 		state.addToTotal ( donoEquiv );
 	  }
 	  
 	  // quick mafs dono equivalent spin - comparison = (( res.min_subs * tier_1 ) / dono multiplier )
 		
-	  let possibleResults = cfg.wheel.filter(res => (( res.min_subs * cfg.time.multipliers.tier_1 ) / cfg.time.multipliers.donation ) <= event.data.amount);
+	  let possibleResults = cfg.wheel.filter(res => (( res.min_subs * cfg.time.subeq.tier_1 ) / cfg.time.subeq.donation ) <= event.data.amount);
 	  // can't relate to a twitch user
 	  possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
 	  if(possibleResults.length > 0 && cfg.enable_wheel) {
@@ -1022,16 +1028,16 @@ function multiplierFromPlan(plan: tmi.SubMethod|undefined) {
 }
 
 function totalFromPlan(plan: tmi.SubMethod|undefined) {
-  if(!plan) return cfg.time.multipliers.tier_1;
+  if(!plan) return cfg.time.subeq.tier_1;
   switch (plan) {
     case "Prime":
-      return cfg.time.total.tier_1;
+      return cfg.time.subeq.tier_1;
     case "1000":
-      return cfg.time.total.tier_1;
+      return cfg.time.subeq.tier_1;
     case "2000":
-      return cfg.time.total.tier_2;
+      return cfg.time.subeq.tier_2;
     case "3000":
-      return cfg.time.total.tier_3;
+      return cfg.time.subeq.tier_3;
   }
 }
 
