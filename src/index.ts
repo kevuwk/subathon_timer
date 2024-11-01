@@ -132,7 +132,7 @@ async function getBroadcasterID ( )
 }
 
 
-function registerTwitchEvents(state: AppState) {
+async function registerTwitchEvents(state: AppState) {
   state.twitch.on('message', async (channel: string, userstate: tmi.ChatUserstate, message: string, self: boolean) => {
     if(self) return;
     if(!isWheelBlacklisted(userstate.username||"")) {
@@ -311,7 +311,6 @@ function registerTwitchEvents(state: AppState) {
           }
         }
       }
-
     }
 	
 	if(userstate.username == "soundalerts") {
@@ -351,6 +350,15 @@ function registerTwitchEvents(state: AppState) {
 				let possibleResults = cfg.wheel.filter(res => ((( res.min_subs * cfg.time.subeq.tier_1 ) / cfg.time.subeq.bits ) * 100) <= bits);
 				if(isWheelBlacklisted(username)) {
 					possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"));
+				}
+				let iID = await getUserID ( username );
+				if ( iID )
+				{
+					let bMod = await isMod ( iID );
+					if ( bMod )
+					{
+						possibleResults = possibleResults.filter(res => !(res.type === "vip"))
+					}
 				}
 				if(possibleResults.length > 0 && cfg.enable_wheel) {
 					const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
@@ -406,6 +414,15 @@ function registerTwitchEvents(state: AppState) {
 				if(isWheelBlacklisted(username)) {
 					possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
 				}
+				let iID = await getUserID ( username );
+				if ( iID )
+				{
+					let bMod = await isMod ( iID );
+					if ( bMod )
+					{
+						possibleResults = possibleResults.filter(res => !(res.type === "vip"))
+					}
+				}
 				if(possibleResults.length > 0 && cfg.enable_wheel) {
 					const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
 					possibleResults.forEach(r => r.chance = r.chance / totalChances);
@@ -460,6 +477,15 @@ function registerTwitchEvents(state: AppState) {
     if(isWheelBlacklisted(username)) {
       possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
     }
+	let iID = await getUserID ( username );
+	if ( iID )
+	{
+		let bMod = await isMod ( iID );
+		if ( bMod )
+		{
+			possibleResults = possibleResults.filter(res => !(res.type === "vip"))
+		}
+	}
     if(possibleResults.length > 0 && cfg.enable_wheel) {
       const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
       possibleResults.forEach(r => r.chance = r.chance / totalChances);
@@ -545,6 +571,15 @@ function registerTwitchEvents(state: AppState) {
 	let possibleResults = cfg.wheel.filter(res => ((( res.min_subs * cfg.time.subeq.tier_1 ) / cfg.time.subeq.bits ) * 100) <= bits);
 	if(isWheelBlacklisted(username)) {
 		possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
+	}
+	let iID = await getUserID ( username );
+	if ( iID )
+	{
+		let bMod = await isMod ( iID );
+		if ( bMod )
+		{
+			possibleResults = possibleResults.filter(res => !(res.type === "vip"))
+		}
 	}
 	if(possibleResults.length > 0 && cfg.enable_wheel) {
 		const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
@@ -636,6 +671,7 @@ function registerStreamlabsEvents(state: AppState) {
 		let possibleResults = cfg.wheel.filter(res => (( res.min_subs * cfg.time.subeq.tier_1 ) / cfg.time.subeq.donation ) <= amount);
 		// can't relate to a twitch user
 		possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
+		possibleResults = possibleResults.filter(res => !(res.type === "vip"))
 		if(possibleResults.length > 0 && cfg.enable_wheel) {
 			const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
 			possibleResults.forEach(r => r.chance = r.chance / totalChances);
@@ -761,6 +797,7 @@ function registerStreamelementsEvents(state: AppState) {
 	  let possibleResults = cfg.wheel.filter(res => (( res.min_subs * cfg.time.subeq.tier_1 ) / cfg.time.subeq.donation ) <= event.data.amount);
 	  // can't relate to a twitch user
 	  possibleResults = possibleResults.filter(res => !(res.type === "timeout" && res.target === "sender"))
+	  possibleResults = possibleResults.filter(res => !(res.type === "vip"))
 	  if(possibleResults.length > 0 && cfg.enable_wheel) {
 	    const totalChances = possibleResults.map(r => r.chance).reduce((a,b) => a+b);
 	    possibleResults.forEach(r => r.chance = r.chance / totalChances);
@@ -998,6 +1035,20 @@ class AppState {
     } else if(spin.res.type === 'emoteonly') {
 		emoteMode( true );
 		setTimeout(async () => { emoteMode ( false ); }, (1000*spin.res.value));
+	} else if ( spin.res.type === 'vip') {
+		let target =  await getUserID( spin.sender );
+		if ( target )
+		{
+			let bVIP = await isVIP ( target );
+			if ( bVIP )
+			{
+				sendMessage ( "!removevip " + spin.sender );
+			}
+			else
+			{
+				sendMessage ( "!addvip " + spin.sender + " 1m" );
+			}
+		}
 	}
   }
 
@@ -1069,6 +1120,7 @@ async function updateToken()
 		};
 		var response = await fetch('https://id.twitch.tv/oauth2/token', options);
 		jsonBlocks = await response.json();
+		console.log ( jsonBlocks.scope );
 		accessToken = jsonBlocks.access_token;
 		setTimeout(function() { updateToken() },((jsonBlocks.expires_in - 100)*1000));
 
@@ -1252,6 +1304,71 @@ async function emoteMode( bFlag: boolean )
 			// handle error
 			//console.error(e)
 			console.log ( "Emote Mode Error" );
+		}
+	}
+	else
+	{
+		console.log ( "No access token available" );
+	}
+}
+
+
+async function isVIP ( iID: number )
+{
+	if ( accessToken )
+	{
+		let auth = "Bearer " + accessToken;
+		try
+		{
+			let options = {
+				method: 'GET',
+				headers: {
+					'Client-Id': cfg.twitch_clientid,
+					'Authorization': auth
+				}
+			};
+			
+			var response = await fetch('https://api.twitch.tv/helix/channels/vips?broadcaster_id=' + broadcaster_id + '&user_id=' + iID, options);
+			if ( response.status == 200 )
+			{
+				let jsonBlocks = await response.json();
+				if ( jsonBlocks.data[0] ) { return true; }
+			}
+		} catch (e) {
+			// handle error
+			return false;
+		}
+	}
+	else
+	{
+		console.log ( "No access token available" );
+	}
+	return false;
+}
+
+async function sendMessage( sMessage: string )
+{
+	if ( accessToken )
+	{
+		let auth = "Bearer " + accessToken;
+		let jsonBlocks;
+		try
+		{
+			let sBody = JSON.stringify({"broadcaster_id": broadcaster_id, "sender_id": broadcaster_id, "message": sMessage})
+			let options = {
+				method: 'POST',
+				headers: {
+					'Client-Id': cfg.twitch_clientid,
+					'Authorization': auth,
+					'Content-Type': 'application/json'
+				},
+				body: sBody
+			};
+			var response = await fetch("https://api.twitch.tv/helix/chat/messages", options);
+		} catch (e) {
+			// handle error
+			//console.error(e)
+			console.log ( "sendMessage Error" );
 		}
 	}
 	else
